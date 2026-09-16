@@ -87,7 +87,11 @@
     background: var(--accent); color: #fff; border: none; border-radius: 4px;
   }
   .btn.ghost { background: var(--bg); color: var(--accent); border: 1px solid var(--line); }
+  .btn.sm { padding: 5px 11px; font-size: 12.5px; font-weight: 400; }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .controls.quick { gap: 8px; align-items: center; padding: 10px 16px; margin-bottom: 14px; }
+  .quick-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+                 color: var(--ink-soft); margin-right: 2px; }
 
   .card {
     border: 1px solid var(--line); border-radius: 6px; padding: 16px;
@@ -100,8 +104,14 @@
 
   .scroll { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  th, td { padding: 6px 12px; text-align: center; white-space: nowrap; border-bottom: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; }
+  /* Centred numbers only read well if the digits are the same width and every cell in a
+     column has the same number of decimals -- both are true here (tabular monospace, fixed
+     dp per column), so the decimal points still line up. */
+  td.num { font-variant-numeric: tabular-nums; }
+  .slice-sub { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 400;
+               letter-spacing: .01em; margin-top: 1px; }
   th {
     font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft);
     font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0;
@@ -129,6 +139,22 @@
   .chip button:hover { color: var(--neg); }
 
   .empty { color: var(--ink-soft); font-size: 14px; padding: 28px 4px; text-align: center; }
+  .prose { max-width: 78ch; }
+  .prose h2 { font-size: 15px; font-weight: 600; margin: 26px 0 8px; }
+  .prose h2:first-child { margin-top: 0; }
+  .prose h3 { font-size: 13.5px; font-weight: 600; margin: 18px 0 5px; }
+  .prose p { margin: 0 0 10px; }
+  .prose ul { margin: 0 0 10px; padding-left: 20px; }
+  .prose li { margin-bottom: 4px; }
+  .eq {
+    font-family: var(--mono); font-size: 12.5px; background: var(--panel);
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 0 4px 4px 0; padding: 9px 12px; margin: 8px 0 10px;
+    overflow-x: auto; white-space: pre;
+  }
+  .cite { font-size: 12.5px; color: var(--ink-soft); margin: 4px 0 12px; padding-left: 12px;
+          border-left: 2px solid var(--line); }
+  .prose table { max-width: 100%; margin-bottom: 12px; }
   .warn {
     background: var(--accent-soft); border-left: 3px solid var(--accent);
     padding: 10px 14px; font-size: 13px; border-radius: 0 4px 4px 0; margin-bottom: 16px;
@@ -144,12 +170,12 @@
 <div class="wrap">
 
 <header>
-  <h1>FactorViz</h1>
+  <h1>Exploring the corporate bond factor zoo</h1>
   <p class="sub">
-    Corporate bond factor returns from
-    <a href="https://openbondassetpricing.com">Open Source Bond Asset Pricing</a>.
-    Compare single-sort against within-firm sorts, four return definitions, three rating
-    universes and two weightings &mdash; across three datasets reaching back to 1973.
+    Long&ndash;short corporate bond factor returns from
+    <a href="https://openbondassetpricing.com">Open Source Bond Asset Pricing</a>. Compare
+    single sorts against within-firm sorts, four return definitions, three rating universes
+    and two weighting schemes &mdash; across three datasets reaching back to 1973.
   </p>
 </header>
 
@@ -202,6 +228,16 @@
     <div class="field"><label for="c-factor">Factor</label><select id="c-factor"></select></div>
     <button class="btn" id="c-add">Add series</button>
     <button class="btn ghost" id="c-clear">Clear all</button>
+  </div>
+
+  <div class="controls quick">
+    <span class="quick-label">Add this factor across &rarr;</span>
+    <button class="btn ghost sm" data-axis="sort">Both sorts</button>
+    <button class="btn ghost sm" data-axis="rt">All return types</button>
+    <button class="btn ghost sm" data-axis="dataset">All datasets</button>
+    <button class="btn ghost sm" data-axis="band">All universes</button>
+    <button class="btn ghost sm" data-axis="w">EW and VW</button>
+    <span class="muted" id="c-quick-note" style="font-size:12.5px"></span>
   </div>
 
   <div class="controls" style="padding-top:10px;padding-bottom:10px">
@@ -416,9 +452,10 @@ const COLUMNS = [
 
 function renderTable(el, rows, opts) {
   const { sortBy, asc, onSort, onPick, picked, showSlice } = opts;
-  const cols = showSlice
-    ? [COLUMNS[0], ["slice", "Slice", null], ...COLUMNS.slice(1)]
-    : COLUMNS;
+  // ❗No "Slice" column. It was the widest thing on the page and it repeated what the chips
+  // above already say. The slice now sits as a muted second line under the factor name, so a
+  // row is still identifiable without spending a column on it.
+  const cols = COLUMNS;
 
   const sorted = [...rows].sort((a, b) => {
     const x = a[sortBy], y = b[sortBy];
@@ -442,10 +479,11 @@ function renderTable(el, rows, opts) {
           ? `<input type="checkbox" data-f="${r._key}" ${picked && picked.has(r._key) ? "checked" : ""}> `
           : `<span class="swatch" style="background:${r._color}"></span>`;
         const star = r._flipped ? ' <span class="muted" title="sign flipped for display">&minus;</span>' : "";
+        const sub = showSlice && r._slice
+          ? `<span class="slice-sub">${r._slice}</span>` : "";
         return `<td>${tick}<strong>${r._label}</strong>${star}
-                <span class="muted">${r.factor}</span></td>`;
+                <span class="muted">${r.factor}</span>${sub}</td>`;
       }
-      if (k === "slice") return `<td class="muted">${r._slice}</td>`;
       const v = r[k];
       return `<td class="num ${k === "factor" ? "" : signClass(k === "maxdd" ? null : v)}">${fmt(v, dp)}</td>`;
     }).join("");
@@ -574,6 +612,60 @@ function sliceLabel(e) {
 }
 
 function cartKey(e) { return [e.dataset, e.sort, e.rt, e.band, e.w, e.factor].join("|"); }
+
+function currentPick() {
+  return { dataset: $("c-dataset").value, sort: $("c-sort").value, rt: $("c-rt").value,
+           band: $("c-band").value, w: $("c-w").value, factor: $("c-factor").value };
+}
+
+function factorName(base, sort, band) {
+  // The naming grammar, {base}[_wf][_ig|_hy] -- spec/factor_names.json -> compose.grammar.
+  // ❗Varying the SORT renames the factor: `cs` single is `cs_wf` within-firm. Adding the
+  // variant without renaming would look up a factor that does not exist in that product and
+  // silently add nothing, which reads as "the button is broken".
+  return base + (sort === "within_firm" ? "_wf" : "")
+              + (band === "ig" ? "_ig" : band === "nig" ? "_hy" : "");
+}
+
+const AXIS_VALUES = {
+  sort: () => Object.keys(META.sorts),
+  rt: () => Object.keys(META.return_types),
+  dataset: () => Object.keys(META.datasets),
+  band: () => Object.keys(META.bands),
+  w: () => Object.keys(META.weightings),
+};
+
+function addAcross(axis) {
+  const here = currentPick();
+  const base = baseName(here.factor);
+  const note = $("c-quick-note");
+  let added = 0, unavailable = [], full = false;
+
+  for (const v of AXIS_VALUES[axis]()) {
+    const e = { ...here, [axis]: v };
+    e.factor = factorName(base, e.sort, e.band);
+    const prod = META.products[`${e.dataset}_${e.sort}`];
+    // ❗Not every combination exists. Lehman-ICE sorts 83 of the 108 signals -- it is
+    // quote data with no trade prints, so every illiquidity and daily-volatility measure is
+    // absent. Say which were skipped rather than silently adding fewer than asked.
+    if (!prod || !prod.factors.includes(e.factor) || !prod.return_types.includes(e.rt)) {
+      unavailable.push(axis === "dataset" ? META.datasets[v].label : v);
+      continue;
+    }
+    if (compare.cart.some((x) => cartKey(x) === cartKey(e))) continue;
+    if (compare.cart.length >= 10) { full = true; break; }
+    compare.cart.push(e);
+    added++;
+  }
+
+  const bits = [];
+  if (added) bits.push(`added ${added}`);
+  if (unavailable.length) bits.push(`not available for ${unavailable.join(", ")}`);
+  if (full) bits.push("ten-series limit reached");
+  if (!added && !unavailable.length && !full) bits.push("already in the list");
+  note.textContent = bits.join(" · ");
+  renderCompare();
+}
 
 function renderChips() {
   const el = $("c-chips");
@@ -711,63 +803,139 @@ function renderAbout() {
             <td class="muted">${META.sorts[x.sort]}</td>
             <td class="num">${x.span[0]} to ${x.span[1]}</td>
             <td class="num">${x.months}</td>
-            <td class="num">${x.n_series.toLocaleString()}</td>
-            <td class="num">${x.n_would_flip.toLocaleString()}</td></tr>`;
+            <td class="num">${x.n_series.toLocaleString()}</td></tr>`;
+  }).join("");
+
+  // Return definitions, citations and equations are DECLARED in spec/factors.json and travel
+  // in meta.json. Nothing here is written twice.
+  const D = META.return_type_detail || {};
+  const returns = ["exc", "dur", "dbns", "dcls"].filter((k) => D[k]).map((k) => {
+    const d = D[k];
+    const eq = d.equation ? `<div class="eq">${d.equation}</div>` : "";
+    const cite = d.cite_full ? `<div class="cite">${d.cite_full}</div>` : "";
+    const bm = d.benchmark
+      ? ` Benchmark column: <code>${d.benchmark}</code>.` : "";
+    return `<h3>${d.short}</h3>
+            <p>${d.how}${bm}</p>${eq}${cite}`;
   }).join("");
 
   const bm = Object.entries(META.benchmarks.pairing)
-    .map(([rt, b]) => `<tr><td>${META.return_types[rt]} <span class="muted">(${rt})</span></td>
+    .map(([rt, b]) => `<tr><td>${(D[rt] && D[rt].short) || META.return_types[rt]}
+                       <span class="muted">(${rt})</span></td>
                        <td><code>${b}</code></td></tr>`).join("");
 
-  $("about-body").innerHTML = `
-    <h2>What you are looking at</h2>
-    <p>Each series is one long&ndash;short bond factor: sort bonds on a characteristic, go long
-       the top group and short the bottom, rebalance monthly. Returns are monthly and in
-       decimal; the tables annualise them.</p>
+  $("about-body").innerHTML = `<div class="prose">
+    <h2>What this data is</h2>
+    <p>Each series on this page is a long&ndash;short corporate bond portfolio. At each
+       month-end, bonds are ranked on one characteristic &mdash; a credit spread, a measure of
+       illiquidity, a past return, an estimated factor loading &mdash; and sorted into
+       portfolios. The factor return is the top portfolio minus the bottom, rebalanced monthly.
+       Returns are monthly decimals; tables annualise them.</p>
+    <p>The underlying bond panels are built by the
+       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">TRACE Data
+       Pipeline</a>, and the construction follows Dickerson, Robotti and Rossetti (2025).</p>
 
-    <h2>The products</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Dataset</th><th>Sort</th><th>Span</th><th>Months</th>
-                 <th>Series</th><th>Would flip</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
+    <h2>How the portfolios are formed</h2>
+    <h3>Single sorts</h3>
+    <p>Bonds are ranked across the entire cross-section each month: deciles over all bonds,
+       quintiles within a rating band. The factor is the extreme-decile (or quintile) spread,
+       computed both equal-weighted and value-weighted, where value weights are price times
+       amount outstanding.</p>
+    <h3>Within-firm sorts</h3>
+    <p>Bonds are ranked only against other bonds of the <em>same issuer</em>, so firm-level
+       determinants &mdash; default risk, industry, capital structure, leverage &mdash; are
+       differenced out, and what remains is the marginal price of the bond-level
+       characteristic. Issuers are identified by CRSP <code>permno</code>; only firms with at
+       least two bonds outstanding in a month qualify. Each firm contributes a high-minus-low
+       difference, and firms are aggregated in proportion to the combined market value of the
+       bonds in both legs.</p>
+    <p>Comparing the two sorts on the same characteristic is the cleanest available test of
+       whether a bond factor is a bond effect or a firm effect. The
+       <strong>Compare</strong> tab does this in one click.</p>
 
-    <h2>Sign convention &mdash; read this</h2>
-    <p>These factors are published <strong>unflipped</strong>. Older OSBAP files multiplied any
-       factor with a negative full-sample mean by &minus;1 and marked it with a star
-       (<code>b_amd*</code>). That rule reads the whole sample, so extending the data by one
-       month can flip a factor against last year's file &mdash; silently, with its legs
-       relabelled. We stopped doing it.</p>
-    <p><strong>Orient to positive mean</strong> applies the shipped flip set for display only.
-       It is the same mapping that travels in <code>flip_set.json</code> inside every download,
-       so the page and the archive agree. Flipping negates the return, so Sharpe, t-stat, alpha,
-       beta and information ratio negate with it; volatility does not. Maximum drawdown is
-       shown as &mdash; when flipped, because the drawdown of a negated path is a different
-       number, not a sign change.</p>
+    <h2>Return definitions</h2>
+    <p>A corporate bond's total return contains compensation for interest-rate risk that has
+       nothing to do with credit. The four definitions below differ only in what is subtracted
+       to remove it, and all four are provided so that a result can be checked against the
+       choice rather than resting on it.</p>
+    ${returns}
 
-    <h2>Alpha and beta</h2>
-    <p>Each return type is regressed on its <em>own</em> market benchmark &mdash; a
-       duration-adjusted factor is never regressed on an unadjusted market:</p>
-    <div class="scroll"><table><thead><tr><th>Return type</th><th>Benchmark</th></tr></thead>
-      <tbody>${bm}</tbody></table></div>
-    <p>Benchmarks come from the public pipeline's spliced factor matrix, which runs
-       1973-02 to 2025-11 continuously. Alpha and beta are shown as &mdash; below
-       ${META.benchmarks.min_months} overlapping months, which is why the 1-year window has no
-       alpha: twelve observations is not an estimate.</p>
+    <h2>Risk adjustment</h2>
+    <p>Alpha and beta are estimated from a time-series regression of the factor on a bond
+       market benchmark, and <strong>each return definition is paired with its own
+       benchmark</strong> &mdash; a duration-adjusted factor is never regressed on an
+       unadjusted market:</p>
+    <div class="scroll"><table><thead><tr><th>Return definition</th>
+      <th>Market benchmark</th></tr></thead><tbody>${bm}</tbody></table></div>
+    <div class="eq">r_t = alpha + beta * MKT_t + e_t</div>
+    <p>Alpha is annualised and reported in percent; the information ratio is the annualised
+       ratio of alpha to residual volatility. Both are shown as &mdash; when fewer than
+       ${META.benchmarks.min_months} overlapping monthly observations are available, which is
+       why the one-year window reports no alpha: twelve observations is not an estimate.</p>
+
+    <h2>Sign convention</h2>
+    <p>These factors are published <strong>unflipped</strong>. A common presentational
+       convention multiplies any factor with a negative full-sample average return by
+       &minus;1, so that every reported factor earns a positive premium. That rule uses
+       information from the entire sample, including the future relative to any point within
+       it, and its outcome depends on where the sample happens to end: extending the data by a
+       single month can reverse a factor's sign relative to an earlier release, and swap the
+       identity of its long and short legs.</p>
+    <p>We therefore report raw orientation: the long leg is always the high-characteristic
+       portfolio. The <strong>orient to positive mean</strong> control applies the conventional
+       flip for display only, using the same mapping distributed with the downloadable data, so
+       the two always agree. Because the flip negates the return, every statistic that is
+       linear in it negates with it &mdash; average return, Sharpe ratio, t-statistic, alpha,
+       beta and information ratio. Volatility does not. Maximum drawdown is suppressed under a
+       flip, since the drawdown of a negated return path is a different quantity rather than a
+       change of sign.</p>
 
     <h2>Cumulative performance</h2>
-    <p>Charts show the cumulative <em>sum</em> of monthly returns, in percent. A long&ndash;short
-       factor is zero-cost, so compounding it is not meaningful.</p>
+    <p>Charts plot the cumulative <em>sum</em> of monthly returns, in percent, and maximum
+       drawdown is measured on that path. A long&ndash;short portfolio is zero-cost and its
+       cumulative value can be negative, so geometric compounding is not well defined for it.</p>
 
-    <h2>Gaps</h2>
-    <p>Factor returns are missing in eight known Lehman months (1975-08 to 1975-11 and
-       1984-12 to 1985-03). Illiquidity signals need TRACE transaction data and are empty
-       before 2002-08. For the long sample, 1985-06 is the sensible start: before then almost
-       every bond is investment grade.</p>
+    <h2>Datasets</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Dataset</th><th>Sort</th><th>Sample</th><th>Months</th>
+                 <th>Series</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <ul>
+      <li><strong>${META.datasets.trace.label}</strong> &mdash; ${META.datasets.trace.blurb}</li>
+      <li><strong>${META.datasets.extended.label}</strong> &mdash; ${META.datasets.extended.blurb}</li>
+      <li><strong>${META.datasets.lehman_ice.label}</strong> &mdash; ${META.datasets.lehman_ice.blurb}</li>
+    </ul>
+    <p>Pre-2002 prices are indicative bid-side quotes from the Lehman Brothers Fixed Income
+       database and from ICE/BofA-ML index constituents; from August 2002 they are
+       transaction prices from TRACE. Because the two eras are different kinds of data, the
+       Lehman-ICE dataset sorts 83 of the 108 characteristics: every measure requiring trade
+       prints or daily returns &mdash; illiquidity, daily volatility, daily betas &mdash; is
+       unavailable before TRACE.</p>
 
-    <h2>Getting the data</h2>
-    <p>Everything here is downloadable from
+    <h2>Known gaps</h2>
+    <ul>
+      <li>Factor returns are missing for eight months in which the Lehman database has no
+          prices: 1975-08 to 1975-11, and 1984-12 to 1985-03.</li>
+      <li>Illiquidity and daily-volatility characteristics are unavailable before 2002-08.</li>
+      <li>For long-sample work, 1985-06 is a sensible start. Before the mid-1980s the
+          high-yield market is small, and a non-investment-grade long&ndash;short leg rests on
+          roughly one hundred bonds.</li>
+      <li>TRACE-era characteristics built from transaction prices apply a one-business-day gap
+          between the signal and the start of the return window, which removes the
+          microstructure noise that would otherwise inflate estimated premia.</li>
+    </ul>
+
+    <h2>Data and code</h2>
+    <p>Every series shown here is downloadable from
        <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>. The time series
-       this page plots are byte-for-byte the CSV files in those archives.</p>`;
+       this page plots are the same files distributed in those archives. The pipeline that
+       builds the underlying panels is public at
+       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">github.com/Alexander-M-Dickerson/trace-data-pipeline</a>.</p>
+
+    <h2>Citation</h2>
+    <p>Dickerson, A., Robotti, C. and Rossetti, G. (2025). <em>The Corporate Bond Factor
+       Replication Crisis.</em> Working Paper.</p>
+  </div>`;
 }
 
 async function boot() {
@@ -807,14 +975,21 @@ async function boot() {
   $("c-band").onchange = refreshCompareFactors;
   $("c-flip").onchange = renderCompare;
   $("c-add").onclick = () => {
-    const e = { dataset: $("c-dataset").value, sort: $("c-sort").value, rt: $("c-rt").value,
-                band: $("c-band").value, w: $("c-w").value, factor: $("c-factor").value };
+    const e = currentPick();
+    $("c-quick-note").textContent = "";
     if (compare.cart.some((x) => cartKey(x) === cartKey(e))) return;
     if (compare.cart.length >= 10) { alert("Ten series at once is the limit."); return; }
     compare.cart.push(e);
     renderCompare();
   };
-  $("c-clear").onclick = () => { compare.cart = []; renderCompare(); };
+  $("c-clear").onclick = () => {
+    compare.cart = [];
+    $("c-quick-note").textContent = "";
+    renderCompare();
+  };
+  document.querySelectorAll(".controls.quick button[data-axis]").forEach((b) => {
+    b.onclick = () => addAcross(b.dataset.axis);
+  });
 
   const tabs = { explore: "panel-explore", compare: "panel-compare", about: "panel-about" };
   for (const [name, panel] of Object.entries(tabs)) {

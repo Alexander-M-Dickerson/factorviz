@@ -1,5 +1,5 @@
 {
-  "built_utc": "2026-09-16T10:19:31+00:00",
+  "built_utc": "2026-09-16T10:39:28+00:00",
   "orientation": "unflipped",
   "cumulative": "cumulative SUM of monthly returns (long-short factors are zero-cost; compounding them is not meaningful)",
   "benchmarks": {
@@ -51,9 +51,45 @@
   },
   "return_types": {
     "exc": "Excess (r - rf)",
-    "dur": "Duration-adjusted",
+    "dur": "Duration-adj. (APR)",
     "dbns": "Duration-adj. (BNS)",
-    "dcls": "Duration-adj. (close)"
+    "dcls": "Duration-adj. (CLS)"
+  },
+  "return_type_detail": {
+    "exc": {
+      "short": "Excess (r - rf)",
+      "long": "Excess return over the one-month Treasury bill",
+      "benchmark": "rf",
+      "cite": null,
+      "how": "The bond's total return minus the one-month T-bill rate from Kenneth French's library. In a long-short factor the risk-free rate cancels, so both legs stay interpretable as zero-cost portfolios."
+    },
+    "dur": {
+      "short": "Duration-adj. (APR)",
+      "long": "Duration-adjusted, duration-interpolated key rates",
+      "benchmark": "tret",
+      "cite": "Andreani, Palhares and Richardson (2024)",
+      "cite_full": "Andreani, M., Palhares, D. and Richardson, S. (2024). Computing corporate bond returns: a word (or two) of caution. Review of Accounting Studies 29, 3887-3906.",
+      "how": "CRSP fixed-term Treasury index returns interpolated at the bond's modified duration across the nodes {1/12, 1, 2, 5, 7, 10, 20, 30} years, held flat outside them. This is the incumbent benchmark and the one every beta, momentum and reversal column in the panel is estimated against."
+    },
+    "dbns": {
+      "short": "Duration-adj. (BNS)",
+      "long": "Duration-adjusted, present-value weights on the bond's own cash flows",
+      "benchmark": "tret_bns",
+      "cite": "van Binsbergen, Nozawa and Schwert (2025)",
+      "cite_full": "van Binsbergen, J.H., Nozawa, Y. and Schwert, M. (2025). Duration-Based Valuation of Corporate Bonds. The Review of Financial Studies 38(1), 158-191. doi:10.1093/rfs/hhae054.",
+      "how": "A synthetic Treasury carrying the bond's own cash flows, each weighted by its present value discounted at the BOND'S OWN yield. Because that yield exceeds the Treasury zero yields, the weights sit further forward: the benchmark is shorter in duration and removes parallel shifts in the curve.",
+      "equation": "w_k = PV_k / SUM_j PV_j,   PV_k = CF_k / (1 + y/f)^(f t_k)",
+      "equation_source": "Eqs. (3)-(6) of the SSRN working paper 3914422, which is what code/ implements; the published RFS version may renumber."
+    },
+    "dcls": {
+      "short": "Duration-adj. (CLS)",
+      "long": "Duration-adjusted, cash-flow matched on the Treasury zero curve",
+      "benchmark": "tret_cls",
+      "cite": "Cui, Lu and Song (2026)",
+      "cite_full": "Cui, S., Lu, Y. and Song, Y. (2026). Understanding Corporate Bond Excess Returns, Eqs. (3)-(6).",
+      "how": "The same synthetic Treasury, but each cash flow is weighted by its present value on the TREASURY ZERO CURVE rather than the bond's own yield. That is the only difference from BNS. The weights sit further out, so this benchmark is longer in duration and removes slope and curvature as well as parallel shifts.",
+      "equation": "v_k = CF_k exp(-z_t(t_k) t_k) / SUM_j CF_j exp(-z_t(t_j) t_j)"
+    }
   },
   "bands": {
     "all": "All bonds",
