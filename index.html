@@ -814,7 +814,7 @@ function renderAbout() {
     const eq = d.equation ? `<div class="eq">${d.equation}</div>` : "";
     const cite = d.cite_full ? `<div class="cite">${d.cite_full}</div>` : "";
     const bm = d.benchmark
-      ? ` Benchmark column: <code>${d.benchmark}</code>.` : "";
+      ? ` The benchmark column is <code>${d.benchmark}</code>.` : "";
     return `<h3>${d.short}</h3>
             <p>${d.how}${bm}</p>${eq}${cite}`;
   }).join("");
@@ -830,23 +830,23 @@ function renderAbout() {
        month-end, bonds are ranked on one characteristic &mdash; a credit spread, a measure of
        illiquidity, a past return, an estimated factor loading &mdash; and sorted into
        portfolios. The factor return is the top portfolio minus the bottom, rebalanced monthly.
-       Returns are monthly decimals; tables annualise them.</p>
+       Returns are monthly decimals, and the tables annualise them.</p>
     <p>The underlying bond panels are built by the
        <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">TRACE Data
        Pipeline</a>, and the construction follows Dickerson, Robotti and Rossetti (2025).</p>
 
     <h2>How the portfolios are formed</h2>
     <h3>Single sorts</h3>
-    <p>Bonds are ranked across the entire cross-section each month: deciles over all bonds,
-       quintiles within a rating band. The factor is the extreme-decile (or quintile) spread,
+    <p>Bonds are ranked across the entire cross-section each month, into deciles over all
+       bonds and quintiles within a rating band. The factor is the extreme-decile (or quintile) spread,
        computed both equal-weighted and value-weighted, where value weights are price times
        amount outstanding.</p>
     <h3>Within-firm sorts</h3>
     <p>Bonds are ranked only against other bonds of the <em>same issuer</em>, so firm-level
        determinants &mdash; default risk, industry, capital structure, leverage &mdash; are
        differenced out, and what remains is the marginal price of the bond-level
-       characteristic. Issuers are identified by CRSP <code>permno</code>; only firms with at
-       least two bonds outstanding in a month qualify. Each firm contributes a high-minus-low
+       characteristic. Issuers are identified by CRSP <code>permno</code>, and only firms with
+       at least two bonds outstanding in a month qualify. Each firm contributes a high-minus-low
        difference, and firms are aggregated in proportion to the combined market value of the
        bonds in both legs.</p>
     <p>Comparing the two sorts on the same characteristic is the cleanest available test of
@@ -863,32 +863,36 @@ function renderAbout() {
     <h2>Risk adjustment</h2>
     <p>Alpha and beta are estimated from a time-series regression of the factor on a bond
        market benchmark, and <strong>each return definition is paired with its own
-       benchmark</strong> &mdash; a duration-adjusted factor is never regressed on an
-       unadjusted market:</p>
+       benchmark</strong>, so a duration-adjusted factor is never regressed on an
+       unadjusted market.</p>
     <div class="scroll"><table><thead><tr><th>Return definition</th>
       <th>Market benchmark</th></tr></thead><tbody>${bm}</tbody></table></div>
     <div class="eq">r_t = alpha + beta * MKT_t + e_t</div>
-    <p>Alpha is annualised and reported in percent; the information ratio is the annualised
+    <p>Alpha is annualised and reported in percent. The information ratio is the annualised
        ratio of alpha to residual volatility. Both are shown as &mdash; when fewer than
        ${META.benchmarks.min_months} overlapping monthly observations are available, which is
-       why the one-year window reports no alpha: twelve observations is not an estimate.</p>
+       why the one-year window reports no alpha, because twelve observations is not an
+       estimate.</p>
 
     <h2>Sign convention</h2>
-    <p>These factors are published <strong>unflipped</strong>. A common presentational
-       convention multiplies any factor with a negative full-sample average return by
-       &minus;1, so that every reported factor earns a positive premium. That rule uses
-       information from the entire sample, including the future relative to any point within
-       it, and its outcome depends on where the sample happens to end: extending the data by a
-       single month can reverse a factor's sign relative to an earlier release, and swap the
-       identity of its long and short legs.</p>
-    <p>We therefore report raw orientation: the long leg is always the high-characteristic
+    <p>These factors are <strong>not sign-corrected to have a positive mean</strong>. A common
+       convention multiplies any factor whose average return is negative over the full sample
+       by minus one, so that every published factor appears to earn a positive premium.</p>
+    <p>Short-term reversal is the familiar example. Sorted on last month's return, the
+       high-minus-low portfolio earns a negative average, so the convention flips it and
+       publishes the low-minus-high portfolio instead, usually marked with a star.</p>
+    <p>The correction is computed from the average return over the whole sample, including
+       months later than the ones being reported, and the answer depends on where the sample
+       ends. One more month of data can reverse a factor's sign against last year's release
+       and swap which leg is called long, without anything in the file saying so.</p>
+    <p>We publish raw orientation, so the long leg is always the high-characteristic
        portfolio. The <strong>orient to positive mean</strong> control applies the conventional
-       flip for display only, using the same mapping distributed with the downloadable data, so
-       the two always agree. Because the flip negates the return, every statistic that is
-       linear in it negates with it &mdash; average return, Sharpe ratio, t-statistic, alpha,
-       beta and information ratio. Volatility does not. Maximum drawdown is suppressed under a
-       flip, since the drawdown of a negated return path is a different quantity rather than a
-       change of sign.</p>
+       correction for display only, using the same mapping distributed with the downloadable
+       data, so the page and the download always agree. The correction negates the return, so
+       every statistic that is linear in the return negates with it, including the average
+       return, Sharpe ratio, t-statistic, alpha, beta and information ratio. Volatility is
+       unchanged. Maximum drawdown is left blank under a correction, because the drawdown of a
+       negated return path is a different quantity rather than a change of sign.</p>
 
     <h2>Cumulative performance</h2>
     <p>Charts plot the cumulative <em>sum</em> of monthly returns, in percent, and maximum
@@ -906,16 +910,16 @@ function renderAbout() {
       <li><strong>${META.datasets.lehman_ice.label}</strong> &mdash; ${META.datasets.lehman_ice.blurb}</li>
     </ul>
     <p>Pre-2002 prices are indicative bid-side quotes from the Lehman Brothers Fixed Income
-       database and from ICE/BofA-ML index constituents; from August 2002 they are
+       database and from ICE/BofA-ML index constituents. From August 2002 they are
        transaction prices from TRACE. Because the two eras are different kinds of data, the
-       Lehman-ICE dataset sorts 83 of the 108 characteristics: every measure requiring trade
-       prints or daily returns &mdash; illiquidity, daily volatility, daily betas &mdash; is
+       Lehman-ICE dataset sorts 83 of the 108 characteristics. Every measure needing trade
+       prints or daily returns, meaning illiquidity, daily volatility and daily betas, is
        unavailable before TRACE.</p>
 
     <h2>Known gaps</h2>
     <ul>
       <li>Factor returns are missing for eight months in which the Lehman database has no
-          prices: 1975-08 to 1975-11, and 1984-12 to 1985-03.</li>
+          prices, 1975-08 to 1975-11 and 1984-12 to 1985-03.</li>
       <li>Illiquidity and daily-volatility characteristics are unavailable before 2002-08.</li>
       <li>For long-sample work, 1985-06 is a sensible start. Before the mid-1980s the
           high-yield market is small, and a non-investment-grade long&ndash;short leg rests on
