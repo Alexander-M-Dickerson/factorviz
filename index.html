@@ -249,6 +249,7 @@
   <div class="controls" style="padding-top:10px;padding-bottom:10px">
     <div class="field"><label>Window</label><div class="seg" id="c-window"></div></div>
     <label class="check"><input type="checkbox" id="c-flip"> Orient to positive mean</label>
+    <label class="check"><input type="checkbox" id="c-align"> Aligned sample</label>
     <span class="muted" id="c-hint" style="font-size:13px"></span>
   </div>
 
@@ -355,6 +356,16 @@ async function loadStats(dataset, sort) {
   return j;
 }
 
+let BENCH = null;
+async function loadBenchmarks() {
+  if (BENCH) return BENCH;
+  const r = await fetch(`${DATA}/benchmarks.csv`);
+  if (!r.ok) throw new Error(`benchmarks.csv: ${r.status}`);
+  BENCH = parseCsv(await r.text());
+  BENCH.index = new Map(BENCH.dates.map((d, i) => [d, i]));
+  return BENCH;
+}
+
 async function loadSeries(dataset, sort, rt, band, w) {
   const key = `${dataset}_${sort}_${rt}_${band}_${w}`;
   if (SERIES.has(key)) return SERIES.get(key);
@@ -409,6 +420,62 @@ function cumulative(values, mask, flip) {
     out.push(acc * 100);
   }
   return out;
+}
+
+/* ------------------------------------------------- statistics, in the browser
+
+   ❗These must reproduce tools/make_factorviz.py exactly. Two implementations of the same
+   statistic is precisely the drift this project gates elsewhere, so `check_logic.mjs`
+   recomputes every series over the full window and compares against stats.json. If a formula
+   here changes and the Python does not, that check fails.
+
+   Only used when the window is not one of the four precomputed ones, which today means the
+   aligned sample. Everything else reads stats.json.                                        */
+
+function computeStats(y, x, mask) {
+  const n = y.length;
+  let cnt = 0, sum = 0;
+  for (let i = 0; i < n; i++) if (mask[i] && Number.isFinite(y[i])) { cnt++; sum += y[i]; }
+  if (!cnt) return null;
+  const mean = sum / cnt;
+  let ss = 0;
+  for (let i = 0; i < n; i++) if (mask[i] && Number.isFinite(y[i])) ss += (y[i] - mean) ** 2;
+  const sd = cnt > 1 ? Math.sqrt(ss / (cnt - 1)) : NaN;
+
+  // Max drawdown on the cumulative SUM, matching _describe in the Python.
+  let acc = 0, peak = 0, dd = 0;
+  for (let i = 0; i < n; i++) {
+    if (!mask[i]) continue;
+    if (Number.isFinite(y[i])) acc += y[i];
+    if (acc > peak) peak = acc;
+    if (acc - peak < dd) dd = acc - peak;
+  }
+
+  // OLS on the matched benchmark, same masked-sum algebra as _ols_many.
+  let m = 0, Sx = 0, Sy = 0, Sxx = 0, Sxy = 0, Syy = 0;
+  for (let i = 0; i < n; i++) {
+    if (!mask[i] || !Number.isFinite(y[i]) || !x || !Number.isFinite(x[i])) continue;
+    m++; Sx += x[i]; Sy += y[i]; Sxx += x[i] * x[i]; Sxy += x[i] * y[i]; Syy += y[i] * y[i];
+  }
+  let alpha = null, beta = null, ir = null;
+  const den = m * Sxx - Sx * Sx;
+  if (m >= (META.benchmarks.min_months || 24) && den !== 0) {
+    beta = (m * Sxy - Sx * Sy) / den;
+    alpha = (Sy - beta * Sx) / m;
+    const sse = Syy - alpha * Sy - beta * Sxy;
+    const rsd = m > 2 ? Math.sqrt(Math.max(sse, 0) / (m - 2)) : NaN;
+    ir = rsd > 0 ? (alpha / rsd) * Math.sqrt(12) : null;
+    alpha = alpha * 12 * 100;
+  }
+  return {
+    n: cnt,
+    mean_ann: mean * 12 * 100,
+    vol_ann: sd * Math.sqrt(12) * 100,
+    sharpe: sd > 0 ? (mean / sd) * Math.sqrt(12) : null,
+    tstat: sd > 0 ? mean / (sd / Math.sqrt(cnt)) : null,
+    maxdd: dd * 100,
+    alpha_ann: alpha, beta: beta, ir: ir, n_bm: m,
+  };
 }
 
 function statsRow(stats, factor, w, rt, win) {
@@ -706,12 +773,51 @@ async function renderCompare() {
   const rows = [];
   const datasets = [];
   let labels = null;
+  const alignOn = $("c-align").checked;
 
-  for (let i = 0; i < compare.cart.length; i++) {
-    const e = compare.cart[i];
+  // Load every series first, so an aligned sample can be worked out across all of them.
+  const loaded = [];
+  for (const e of compare.cart) {
+    loaded.push({ e, data: await loadSeries(e.dataset, e.sort, e.rt, e.band, e.w) });
+  }
+
+  // ❗The aligned sample is the intersection of the months where EVERY selected series has a
+  // value, not merely the overlap of their date ranges. A factor can start early and still
+  // carry gaps -- the eight Lehman months, or an illiquidity signal that only begins with
+  // TRACE -- and lining up endpoints while leaving holes inside would look aligned and not be.
+  let common = null;
+  if (alignOn && loaded.length > 1) {
+    for (const { e, data } of loaded) {
+      const mask = windowMask(data.dates, compare.window);
+      const have = new Set();
+      const col = data.cols[e.factor] || [];
+      data.dates.forEach((d, j) => {
+        if (mask[j] && Number.isFinite(col[j])) have.add(d);
+      });
+      common = common === null ? have : new Set([...common].filter((d) => have.has(d)));
+    }
+  }
+  if (alignOn) await loadBenchmarks();
+
+  for (let i = 0; i < loaded.length; i++) {
+    const { e, data } = loaded[i];
     const stats = await loadStats(e.dataset, e.sort);
     const flip = flipOn && isFlipped(stats, e.factor, e.w, e.rt);
-    const raw = statsRow(stats, e.factor, e.w, e.rt, compare.window);
+
+    let raw;
+    if (common) {
+      // Recomputed, because the aligned window is not one of the four precomputed ones.
+      const col = data.cols[e.factor] || [];
+      const m = data.dates.map((d) => common.has(d));
+      const bcol = META.benchmarks.pairing[e.rt];
+      const x = data.dates.map((d) => {
+        const j = BENCH.index.get(d);
+        return j === undefined ? NaN : BENCH.cols[bcol][j];
+      });
+      raw = computeStats(col, x, m);
+    } else {
+      raw = statsRow(stats, e.factor, e.w, e.rt, compare.window);
+    }
     if (raw) {
       const r = applyFlip(raw, flip);
       r.factor = e.factor;
@@ -721,8 +827,9 @@ async function renderCompare() {
       r._color = PALETTE[i % PALETTE.length];
       rows.push(r);
     }
-    const data = await loadSeries(e.dataset, e.sort, e.rt, e.band, e.w);
-    const mask = windowMask(data.dates, compare.window);
+    const mask = common
+      ? data.dates.map((d) => common.has(d))
+      : windowMask(data.dates, compare.window);
     const dates = data.dates.filter((_, j) => mask[j]);
     const vals = cumulative(data.cols[e.factor] || [], mask, flip).filter((v) => v !== null);
     // ❗Series from different datasets have different spans. Use the LONGEST axis and pad
@@ -754,10 +861,17 @@ async function renderCompare() {
   });
 
   const spans = rows.map((r) => r.n).filter((n) => n);
-  if (spans.length > 1 && Math.max(...spans) !== Math.min(...spans)) {
+  if (common) {
+    const d = [...common].sort();
+    $("c-hint").textContent = d.length
+      ? `Aligned to ${d.length} months every series has, ${d[0].slice(0, 7)} to `
+        + `${d[d.length - 1].slice(0, 7)}. Statistics recomputed on that sample.`
+      : "These series share no month with data. Nothing to align.";
+  } else if (spans.length > 1 && Math.max(...spans) !== Math.min(...spans)) {
     $("c-hint").textContent =
-      `Series cover different periods (${Math.min(...spans)}–${Math.max(...spans)} months). `
-      + "Cumulative lines start where each series starts.";
+      `Series cover different periods (${Math.min(...spans)}–${Math.max(...spans)} months), `
+      + "so the statistics below are not measured over the same sample. "
+      + "Tick Aligned sample to compare them like for like.";
   } else {
     $("c-hint").textContent = "";
   }
@@ -824,6 +938,25 @@ function renderAbout() {
     return `<h3>${d.short}</h3>
             <p>${d.how}${bm}</p>${eq}${cite}`;
   }).join("");
+
+  // Download links, built by make_factorviz.py from the same name templates the packager
+  // uses, so a link cannot point at a file that was never named that.
+  const D_ = META.downloads || {};
+  const mb = (b) => (b ? ` <span class="muted">(${(b / 1e6).toFixed(0)} MB)</span>` : "");
+  const dl = !D_.items || !Object.keys(D_.items).length
+    ? `<p class="muted">Download links are not available in this build.</p>`
+    : `<div class="scroll"><table>
+         <thead><tr><th>Dataset</th><th>Sort</th><th>Panel</th>
+                    <th>Time series</th></tr></thead><tbody>` +
+      Object.keys(D_.items).map((k) => {
+        const p = META.products[k], it = D_.items[k];
+        return `<tr><td>${META.datasets[p.dataset].label}</td>
+                <td class="muted">${META.sorts[p.sort]}</td>
+                <td><a href="${it.panel.url}">parquet</a>${mb(it.panel.bytes)}</td>
+                <td><a href="${it.csv.url}">CSV</a>${mb(it.csv.bytes)}</td></tr>`;
+      }).join("") +
+      `</tbody></table></div>
+       <p><a href="${D_.all_url}"><strong>All twelve archives in one place</strong></a></p>`;
 
   const bm = Object.entries(META.benchmarks.pairing)
     .map(([rt, b]) => `<tr><td>${(D[rt] && D[rt].short) || META.return_types[rt]}
@@ -935,12 +1068,18 @@ function renderAbout() {
           microstructure noise that would otherwise inflate estimated premia.</li>
     </ul>
 
-    <h2>Data and code</h2>
-    <p>Every series shown here is downloadable from
-       <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>. The time series
-       this page plots are the same files distributed in those archives. The pipeline that
-       builds the underlying panels is public at
-       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">github.com/Alexander-M-Dickerson/trace-data-pipeline</a>.</p>
+    <h2>Download the data</h2>
+    <p>Everything on this page is downloadable. The <strong>panel</strong> archive holds the
+       long parquet with every leg, weighting and return type. The <strong>time series</strong>
+       archive holds the same data pivoted wide, one CSV per return type, universe and
+       weighting, which is what this page plots.</p>
+    ${dl}
+    <p>Every archive carries a <code>MANIFEST.json</code> listing each file with its SHA-256,
+       and a <code>flip_set.json</code> that reproduces the older sign convention. The pipeline
+       that builds the underlying bond panels is public at
+       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">github.com/Alexander-M-Dickerson/trace-data-pipeline</a>,
+       and more data is available at
+       <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>.</p>
 
     <h2>Citation</h2>
     <p>Dickerson, A., Robotti, C. and Rossetti, G. (2025). <em>The Corporate Bond Factor
@@ -984,6 +1123,7 @@ async function boot() {
   }
   $("c-band").onchange = refreshCompareFactors;
   $("c-flip").onchange = renderCompare;
+  $("c-align").onchange = renderCompare;
   $("c-add").onclick = () => {
     const e = currentPick();
     $("c-quick-note").textContent = "";

@@ -1,5 +1,5 @@
 {
-  "built_utc": "2026-09-16T10:59:13+00:00",
+  "built_utc": "2026-09-16T11:12:37+00:00",
   "orientation": "unflipped",
   "cumulative": "cumulative SUM of monthly returns (long-short factors are zero-cost; compounding them is not meaningful)",
   "benchmarks": {
@@ -99,6 +99,86 @@
   "weightings": {
     "ew": "Equal-weighted",
     "vw": "Value-weighted"
+  },
+  "downloads": {
+    "host": "github_releases",
+    "repo": "Alexander-M-Dickerson/factorviz",
+    "tag": "v2026",
+    "items": {
+      "trace_single": {
+        "panel": {
+          "name": "single_sort_panel_trace_2026.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/single_sort_panel_trace_2026.zip",
+          "bytes": 36980509
+        },
+        "csv": {
+          "name": "single_sort_trace_2026_csv.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/single_sort_trace_2026_csv.zip",
+          "bytes": 4461801
+        }
+      },
+      "trace_within_firm": {
+        "panel": {
+          "name": "within_firm_sort_panel_trace_2026.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/within_firm_sort_panel_trace_2026.zip",
+          "bytes": 37456302
+        },
+        "csv": {
+          "name": "within_firm_sort_trace_2026_csv.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/within_firm_sort_trace_2026_csv.zip",
+          "bytes": 4506463
+        }
+      },
+      "extended_single": {
+        "panel": {
+          "name": "single_sort_panel_extended_2026.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/single_sort_panel_extended_2026.zip",
+          "bytes": 65911407
+        },
+        "csv": {
+          "name": "single_sort_extended_2026_csv.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/single_sort_extended_2026_csv.zip",
+          "bytes": 8002578
+        }
+      },
+      "extended_within_firm": {
+        "panel": {
+          "name": "within_firm_sort_panel_extended_2026.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/within_firm_sort_panel_extended_2026.zip",
+          "bytes": 66434974
+        },
+        "csv": {
+          "name": "within_firm_sort_extended_2026_csv.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/within_firm_sort_extended_2026_csv.zip",
+          "bytes": 8039136
+        }
+      },
+      "lehman_ice_single": {
+        "panel": {
+          "name": "single_sort_panel_lehman_ice_2026.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/single_sort_panel_lehman_ice_2026.zip",
+          "bytes": 53357540
+        },
+        "csv": {
+          "name": "single_sort_lehman_ice_2026_csv.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/single_sort_lehman_ice_2026_csv.zip",
+          "bytes": 6499133
+        }
+      },
+      "lehman_ice_within_firm": {
+        "panel": {
+          "name": "within_firm_sort_panel_lehman_ice_2026.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/within_firm_sort_panel_lehman_ice_2026.zip",
+          "bytes": 53717728
+        },
+        "csv": {
+          "name": "within_firm_sort_lehman_ice_2026_csv.zip",
+          "url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/download/v2026/within_firm_sort_lehman_ice_2026_csv.zip",
+          "bytes": 6514382
+        }
+      }
+    },
+    "all_url": "https://github.com/Alexander-M-Dickerson/factorviz/releases/tag/v2026"
   },
   "groups": [
     {
