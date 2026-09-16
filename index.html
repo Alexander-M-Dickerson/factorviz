@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FactorViz -- OSBAP Corporate Bond Factors</title>
+<!--
+  FactorViz -- explore the OSBAP corporate bond factors.
+
+  Self-contained but for Chart.js (pinned, from cdnjs) and its data directory, which must
+  sit beside this file as ./data/ . Upload both to WordPress and point a page at it.
+
+  Data contract, produced by osbap_data/tools/make_factorviz.py:
+    data/meta.json                          controls, labels, product index, flip counts
+    data/stats_<dataset>_<sort>.json        every series x 4 windows, precomputed
+    data/series/<dataset>_<sort>_<rt>_<band>_<w>.csv   wide time series, fetched on demand
+
+  The CSVs are byte-for-byte the files the release archives ship, so what this page draws is
+  exactly what a visitor can download.
+
+  NOTE ON SIGN: the factors are published UNFLIPPED -- a factor's sign is whatever the raw
+  sort gives. "Orient to positive mean" applies the SHIPPED flip set (data/stats_*.json
+  -> flip), which is the same mapping in the download. It is a display convention, never a
+  recomputation.
+-->
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f7f7f5;
+    --ink: #1a1a1a;
+    --ink-soft: #5a5a5a;
+    --line: #dcdcd6;
+    --accent: #1f4e79;
+    --accent-soft: #e8eff5;
+    --pos: #1a6b3c;
+    --neg: #9b2226;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --panel: #1e2126; --ink: #e8e8e6; --ink-soft: #a0a0a0;
+      --line: #32363d; --accent: #7fb3e0; --accent-soft: #22303c;
+      --pos: #5fc98a; --neg: #e0787c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 var(--sans);
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 20px 64px; }
+  header h1 { font-size: 26px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p.sub { margin: 0 0 20px; color: var(--ink-soft); font-size: 14px; max-width: 70ch; }
+  a { color: var(--accent); }
+
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+  .tabs button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 10px 18px; font: inherit; font-weight: 500; color: var(--ink-soft);
+    cursor: pointer; margin-bottom: -1px;
+  }
+  .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px 16px; margin-bottom: 18px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
+  select, input[type=search] {
+    font: inherit; font-size: 14px; padding: 6px 8px; background: var(--bg);
+    color: var(--ink); border: 1px solid var(--line); border-radius: 4px; min-width: 150px;
+  }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .seg button {
+    background: var(--bg); border: none; border-right: 1px solid var(--line);
+    padding: 6px 12px; font: inherit; font-size: 13px; color: var(--ink-soft); cursor: pointer;
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); }
+
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 500; padding: 7px 14px; cursor: pointer;
+    background: var(--accent); color: #fff; border: none; border-radius: 4px;
+  }
+  .btn.ghost { background: var(--bg); color: var(--accent); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .card {
+    border: 1px solid var(--line); border-radius: 6px; padding: 16px;
+    margin-bottom: 18px; background: var(--bg);
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+  .card h2 .note { font-weight: 400; color: var(--ink-soft); font-size: 13px; margin-left: 8px; }
+
+  .chartbox { position: relative; height: 380px; }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft);
+    font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0;
+    background: var(--bg);
+  }
+  th.sorted::after { content: " \25BC"; font-size: 9px; }
+  th.sorted.asc::after { content: " \25B2"; }
+  tbody tr:hover { background: var(--accent-soft); }
+  td.num { font-family: var(--mono); font-size: 12.5px; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .muted { color: var(--ink-soft); }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 7px; vertical-align: baseline; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; min-height: 30px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 4px 6px 4px 10px;
+  }
+  .chip button {
+    border: none; background: none; cursor: pointer; color: var(--ink-soft);
+    font-size: 15px; line-height: 1; padding: 0 4px;
+  }
+  .chip button:hover { color: var(--neg); }
+
+  .empty { color: var(--ink-soft); font-size: 14px; padding: 28px 4px; text-align: center; }
+  .warn {
+    background: var(--accent-soft); border-left: 3px solid var(--accent);
+    padding: 10px 14px; font-size: 13px; border-radius: 0 4px 4px 0; margin-bottom: 16px;
+  }
+  footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line);
+           font-size: 12.5px; color: var(--ink-soft); }
+  footer code { font-family: var(--mono); font-size: 12px; }
+  .hidden { display: none !important; }
+  .spin { color: var(--ink-soft); font-size: 13px; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>FactorViz</h1>
+  <p class="sub">
+    Corporate bond factor returns from
+    <a href="https://openbondassetpricing.com">Open Source Bond Asset Pricing</a>.
+    Compare single-sort against within-firm sorts, four return definitions, three rating
+    universes and two weightings &mdash; across three datasets reaching back to 1973.
+  </p>
+</header>
+
+<div class="tabs" role="tablist">
+  <button role="tab" id="tab-explore" aria-selected="true">Explore</button>
+  <button role="tab" id="tab-compare" aria-selected="false">Compare</button>
+  <button role="tab" id="tab-about" aria-selected="false">About the data</button>
+</div>
+
+<!-- ===================== EXPLORE ===================== -->
+<section id="panel-explore">
+  <div class="controls">
+    <div class="field"><label for="e-dataset">Dataset</label><select id="e-dataset"></select></div>
+    <div class="field"><label for="e-sort">Sort</label><select id="e-sort"></select></div>
+    <div class="field"><label for="e-rt">Return type</label><select id="e-rt"></select></div>
+    <div class="field"><label for="e-band">Universe</label><select id="e-band"></select></div>
+    <div class="field"><label for="e-w">Weighting</label><select id="e-w"></select></div>
+    <div class="field"><label>Window</label><div class="seg" id="e-window"></div></div>
+    <div class="field"><label for="e-search">Find a factor</label>
+      <input type="search" id="e-search" placeholder="name or mnemonic"></div>
+    <label class="check"><input type="checkbox" id="e-flip"> Orient to positive mean</label>
+  </div>
+
+  <div class="card">
+    <h2>Cumulative performance
+      <span class="note" id="e-chart-note">tick factors in the table below</span></h2>
+    <div class="chartbox"><canvas id="e-chart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>All factors <span class="note" id="e-table-note"></span></h2>
+    <div class="scroll"><table id="e-table"></table></div>
+  </div>
+</section>
+
+<!-- ===================== COMPARE ===================== -->
+<section id="panel-compare" class="hidden">
+  <div class="warn">
+    Build a list of series, each with its own dataset, sort, return type, universe and
+    weighting &mdash; then overlay them. This is how to ask whether a factor survives
+    <em>within firm</em>, whether it is a duration story, or whether it existed before TRACE.
+  </div>
+
+  <div class="controls">
+    <div class="field"><label for="c-dataset">Dataset</label><select id="c-dataset"></select></div>
+    <div class="field"><label for="c-sort">Sort</label><select id="c-sort"></select></div>
+    <div class="field"><label for="c-rt">Return type</label><select id="c-rt"></select></div>
+    <div class="field"><label for="c-band">Universe</label><select id="c-band"></select></div>
+    <div class="field"><label for="c-w">Weighting</label><select id="c-w"></select></div>
+    <div class="field"><label for="c-factor">Factor</label><select id="c-factor"></select></div>
+    <button class="btn" id="c-add">Add series</button>
+    <button class="btn ghost" id="c-clear">Clear all</button>
+  </div>
+
+  <div class="controls" style="padding-top:10px;padding-bottom:10px">
+    <div class="field"><label>Window</label><div class="seg" id="c-window"></div></div>
+    <label class="check"><input type="checkbox" id="c-flip"> Orient to positive mean</label>
+    <span class="muted" id="c-hint" style="font-size:13px"></span>
+  </div>
+
+  <div class="chips" id="c-chips"></div>
+
+  <div class="card">
+    <h2>Cumulative performance</h2>
+    <div class="chartbox"><canvas id="c-chart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>Statistics</h2>
+    <div class="scroll"><table id="c-table"></table></div>
+  </div>
+</section>
+
+<!-- ===================== ABOUT ===================== -->
+<section id="panel-about" class="hidden">
+  <div class="card" id="about-body"></div>
+</section>
+
+<footer>
+  <p id="foot-built"></p>
+  <p>
+    Dickerson, A., Robotti, C., &amp; Rossetti, G. (2025).
+    <em>The Corporate Bond Factor Replication Crisis.</em> Working Paper.
+    &nbsp;&middot;&nbsp;
+    <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>
+  </p>
+</footer>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ state */
+const DATA = "./data";
+let META = null;
+const STATS = new Map();     // "<ds>_<sort>"                   -> parsed stats json
+const SERIES = new Map();    // "<ds>_<sort>_<rt>_<band>_<w>"   -> {dates:[], cols:{name:[...]}}
+
+const PALETTE = ["#1f4e79", "#c1121f", "#2a9d8f", "#e76f51", "#6a4c93", "#606c38",
+                 "#457b9d", "#bc6c25", "#8d99ae", "#d62828"];
+
+const explore = { picked: new Set(), window: "full", sortBy: "sharpe", asc: false };
+const compare = { cart: [], window: "full" };
+
+/* ------------------------------------------------------------ small utils */
+const $ = (id) => document.getElementById(id);
+
+function baseName(factor) {
+  // ❗Strip the rating suffix BEFORE _wf. 'cs_wf_hy' ends in _hy, so peeling in the other
+  // order leaves '_wf_hy'. Mirrors code/factor_checks.base_name and the caution recorded in
+  // spec/factor_names.json -> compose.caution.
+  let f = factor;
+  for (const s of ["_ig", "_hy"]) { if (f.endsWith(s)) { f = f.slice(0, -s.length); break; } }
+  if (f.endsWith("_wf")) f = f.slice(0, -3);
+  return f;
+}
+
+function bandOf(factor) {
+  if (factor.endsWith("_ig")) return "ig";
+  if (factor.endsWith("_hy")) return "nig";
+  return "all";
+}
+
+function labelFor(factor) {
+  const sig = META.signals[baseName(factor)];
+  return sig ? sig.name : factor;
+}
+
+function fmt(v, dp = 2) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "—";
+  return Number(v).toFixed(dp);
+}
+
+function signClass(v) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "";
+  return v > 0 ? "pos" : (v < 0 ? "neg" : "");
+}
+
+function option(value, text) {
+  const o = document.createElement("option");
+  o.value = value; o.textContent = text;
+  return o;
+}
+
+function fill(sel, entries, keep) {
+  sel.innerHTML = "";
+  for (const [v, t] of entries) sel.appendChild(option(v, t));
+  if (keep && entries.some(([v]) => v === keep)) sel.value = keep;
+}
+
+/* --------------------------------------------------------------- fetching */
+async function loadStats(dataset, sort) {
+  const key = `${dataset}_${sort}`;
+  if (STATS.has(key)) return STATS.get(key);
+  const r = await fetch(`${DATA}/stats_${key}.json`);
+  if (!r.ok) throw new Error(`stats_${key}.json: ${r.status}`);
+  const j = await r.json();
+  STATS.set(key, j);
+  return j;
+}
+
+async function loadSeries(dataset, sort, rt, band, w) {
+  const key = `${dataset}_${sort}_${rt}_${band}_${w}`;
+  if (SERIES.has(key)) return SERIES.get(key);
+  const file = `${dataset}_${sort}_${rt}_${band}_${w}.csv`;
+  const r = await fetch(`${DATA}/series/${file}`);
+  if (!r.ok) throw new Error(`${file}: ${r.status}`);
+  const parsed = parseCsv(await r.text());
+  SERIES.set(key, parsed);
+  return parsed;
+}
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const head = lines[0].split(",");
+  const names = head.slice(1);
+  const dates = [];
+  const cols = {};
+  for (const n of names) cols[n] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(",");
+    dates.push(parts[0]);
+    for (let j = 0; j < names.length; j++) {
+      const raw = parts[j + 1];
+      cols[names[j]].push(raw === "" || raw === undefined ? NaN : Number(raw));
+    }
+  }
+  return { dates, cols };
+}
+
+/* ------------------------------------------------------------ computation */
+function windowMask(dates, win) {
+  // The window counts back from the LAST month of this product, matching how
+  // make_factorviz.py cut the same windows for stats.json.
+  if (win === "full") return dates.map(() => true);
+  const months = { "10y": 120, "5y": 60, "1y": 12 }[win];
+  const last = new Date(dates[dates.length - 1] + "T00:00:00Z");
+  const cut = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() - (months - 1), 1));
+  return dates.map((d) => new Date(d + "T00:00:00Z") >= cut);
+}
+
+function cumulative(values, mask, flip) {
+  // Cumulative SUM of monthly returns, in percent. A long-short factor is zero-cost, so
+  // compounding it is not meaningful; the sum is the standard factor-chart convention and
+  // is what make_factorviz.py measures max drawdown on.
+  const out = [];
+  let acc = 0;
+  const s = flip ? -1 : 1;
+  for (let i = 0; i < values.length; i++) {
+    if (!mask[i]) { out.push(null); continue; }
+    const v = values[i];
+    if (Number.isFinite(v)) acc += s * v;
+    out.push(acc * 100);
+  }
+  return out;
+}
+
+function statsRow(stats, factor, w, rt, win) {
+  const row = stats.series[`${factor}|${w}|${rt}`];
+  if (!row) return null;
+  const wi = stats.windows.indexOf(win);
+  if (wi < 0) return null;
+  const vals = row[wi];
+  const o = {};
+  stats.fields.forEach((f, i) => { o[f] = vals[i]; });
+  return o;
+}
+
+function isFlipped(stats, factor, w, rt) {
+  return Boolean(stats.flip && stats.flip[`${factor}|${w}|${rt}`]);
+}
+
+function applyFlip(row, flip) {
+  // A flip negates the long-short return, so every statistic that is linear in the return
+  // negates with it. Volatility does not; Sharpe, t-stat, alpha and information ratio do.
+  // Beta negates too (the benchmark is unchanged). Max drawdown is NOT a sign flip of
+  // itself -- the drawdown of the negated path is a different number -- so it is dropped
+  // rather than reported wrongly.
+  if (!flip) return row;
+  const o = { ...row };
+  for (const k of ["mean_ann", "sharpe", "tstat", "alpha_ann", "beta", "ir"]) {
+    if (o[k] !== null && o[k] !== undefined) o[k] = -o[k];
+  }
+  o.maxdd = null;
+  o._flipped = true;
+  return o;
+}
+
+/* ------------------------------------------------------------- rendering */
+const COLUMNS = [
+  ["factor",    "Factor",        null],
+  ["n",         "Months",        0],
+  ["mean_ann",  "Return % p.a.", 2],
+  ["vol_ann",   "Vol % p.a.",    2],
+  ["sharpe",    "Sharpe",        2],
+  ["tstat",     "t-stat",        2],
+  ["alpha_ann", "Alpha % p.a.",  2],
+  ["beta",      "Beta",          2],
+  ["ir",        "Info. ratio",   2],
+  ["maxdd",     "Max DD %",      1],
+];
+
+function renderTable(el, rows, opts) {
+  const { sortBy, asc, onSort, onPick, picked, showSlice } = opts;
+  const cols = showSlice
+    ? [COLUMNS[0], ["slice", "Slice", null], ...COLUMNS.slice(1)]
+    : COLUMNS;
+
+  const sorted = [...rows].sort((a, b) => {
+    const x = a[sortBy], y = b[sortBy];
+    if (typeof x === "string" || typeof y === "string") {
+      return (asc ? 1 : -1) * String(x).localeCompare(String(y));
+    }
+    const nx = (x === null || x === undefined || Number.isNaN(x)) ? -Infinity : x;
+    const ny = (y === null || y === undefined || Number.isNaN(y)) ? -Infinity : y;
+    return asc ? nx - ny : ny - nx;
+  });
+
+  const thead = cols.map(([k, t]) => {
+    const cls = k === sortBy ? `sorted${asc ? " asc" : ""}` : "";
+    return `<th data-k="${k}" class="${cls}">${t}</th>`;
+  }).join("");
+
+  const body = sorted.map((r) => {
+    const tds = cols.map(([k, , dp]) => {
+      if (k === "factor") {
+        const tick = onPick
+          ? `<input type="checkbox" data-f="${r._key}" ${picked && picked.has(r._key) ? "checked" : ""}> `
+          : `<span class="swatch" style="background:${r._color}"></span>`;
+        const star = r._flipped ? ' <span class="muted" title="sign flipped for display">&minus;</span>' : "";
+        return `<td>${tick}<strong>${r._label}</strong>${star}
+                <span class="muted">${r.factor}</span></td>`;
+      }
+      if (k === "slice") return `<td class="muted">${r._slice}</td>`;
+      const v = r[k];
+      return `<td class="num ${k === "factor" ? "" : signClass(k === "maxdd" ? null : v)}">${fmt(v, dp)}</td>`;
+    }).join("");
+    return `<tr>${tds}</tr>`;
+  }).join("");
+
+  el.innerHTML = `<thead><tr>${thead}</tr></thead><tbody>${body}</tbody>`;
+
+  el.querySelectorAll("th").forEach((th) => {
+    th.onclick = () => onSort(th.dataset.k);
+  });
+  if (onPick) {
+    el.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+      cb.onchange = () => onPick(cb.dataset.f, cb.checked);
+    });
+  }
+}
+
+let eChart = null, cChart = null;
+
+function drawChart(canvas, existing, labels, datasets) {
+  if (existing) existing.destroy();
+  return new Chart(canvas, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      elements: { point: { radius: 0 }, line: { borderWidth: 1.8, tension: 0 } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12, autoSkip: true }, grid: { display: false } },
+        y: { title: { display: true, text: "Cumulative return (%)" },
+             grid: { color: "rgba(128,128,128,.18)" } },
+      },
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.parsed.y, 1)}%` } },
+      },
+    },
+  });
+}
+
+/* ------------------------------------------------------------- EXPLORE UI */
+function exploreSlice() {
+  return {
+    dataset: $("e-dataset").value, sort: $("e-sort").value, rt: $("e-rt").value,
+    band: $("e-band").value, w: $("e-w").value,
+  };
+}
+
+async function renderExplore() {
+  const s = exploreSlice();
+  const key = `${s.dataset}_${s.sort}`;
+  const prod = META.products[key];
+  const stats = await loadStats(s.dataset, s.sort);
+  const flipOn = $("e-flip").checked;
+  const q = $("e-search").value.trim().toLowerCase();
+
+  const factors = prod.factors.filter((f) => bandOf(f) === s.band);
+  const rows = [];
+  for (const f of factors) {
+    const raw = statsRow(stats, f, s.w, s.rt, explore.window);
+    if (!raw) continue;
+    const flip = flipOn && isFlipped(stats, f, s.w, s.rt);
+    const r = applyFlip(raw, flip);
+    r.factor = f;
+    r._key = f;
+    r._label = labelFor(f);
+    if (q && !(`${f} ${r._label}`.toLowerCase().includes(q))) continue;
+    rows.push(r);
+  }
+
+  $("e-table-note").textContent =
+    `${rows.length} factors · ${prod.span[0]} to ${prod.span[1]} · `
+    + `alpha vs ${META.benchmarks.pairing[s.rt]}`;
+
+  renderTable($("e-table"), rows, {
+    sortBy: explore.sortBy, asc: explore.asc,
+    picked: explore.picked,
+    onSort: (k) => {
+      if (explore.sortBy === k) explore.asc = !explore.asc;
+      else { explore.sortBy = k; explore.asc = false; }
+      renderExplore();
+    },
+    onPick: (f, on) => {
+      if (on) { if (explore.picked.size >= 10) { alert("Ten series at once is the limit -- untick one first."); renderExplore(); return; } explore.picked.add(f); }
+      else explore.picked.delete(f);
+      renderExplore();
+    },
+  });
+
+  await drawExploreChart(s, stats, flipOn);
+}
+
+async function drawExploreChart(s, stats, flipOn) {
+  const picks = [...explore.picked];
+  const note = $("e-chart-note");
+  if (!picks.length) {
+    if (eChart) { eChart.destroy(); eChart = null; }
+    note.textContent = "tick factors in the table below";
+    return;
+  }
+  note.textContent = `${picks.length} selected`;
+  const data = await loadSeries(s.dataset, s.sort, s.rt, s.band, s.w);
+  const mask = windowMask(data.dates, explore.window);
+  const labels = data.dates.filter((_, i) => mask[i]);
+
+  const datasets = picks.map((f, i) => {
+    const flip = flipOn && isFlipped(stats, f, s.w, s.rt);
+    const full = cumulative(data.cols[f] || [], mask, flip);
+    return {
+      label: labelFor(f) + (flip ? " (flipped)" : ""),
+      data: full.filter((v) => v !== null),
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: PALETTE[i % PALETTE.length],
+    };
+  });
+  eChart = drawChart($("e-chart"), eChart, labels, datasets);
+}
+
+/* ------------------------------------------------------------- COMPARE UI */
+function sliceLabel(e) {
+  return [META.datasets[e.dataset].label, META.sorts[e.sort],
+          META.return_types[e.rt], META.bands[e.band],
+          e.w.toUpperCase()].join(" · ");
+}
+
+function cartKey(e) { return [e.dataset, e.sort, e.rt, e.band, e.w, e.factor].join("|"); }
+
+function renderChips() {
+  const el = $("c-chips");
+  if (!compare.cart.length) {
+    el.innerHTML = '<span class="muted" style="font-size:13px">No series yet &mdash; '
+                 + 'pick above and press <strong>Add series</strong>.</span>';
+    return;
+  }
+  el.innerHTML = compare.cart.map((e, i) => `
+    <span class="chip">
+      <span class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></span>
+      <span><strong>${labelFor(e.factor)}</strong> &nbsp;<span class="muted">${sliceLabel(e)}</span></span>
+      <button data-i="${i}" title="remove">&times;</button>
+    </span>`).join("");
+  el.querySelectorAll("button").forEach((b) => {
+    b.onclick = () => { compare.cart.splice(Number(b.dataset.i), 1); renderCompare(); };
+  });
+}
+
+async function renderCompare() {
+  renderChips();
+  const table = $("c-table");
+  const flipOn = $("c-flip").checked;
+
+  if (!compare.cart.length) {
+    table.innerHTML = "";
+    if (cChart) { cChart.destroy(); cChart = null; }
+    $("c-hint").textContent = "";
+    return;
+  }
+
+  const rows = [];
+  const datasets = [];
+  let labels = null;
+
+  for (let i = 0; i < compare.cart.length; i++) {
+    const e = compare.cart[i];
+    const stats = await loadStats(e.dataset, e.sort);
+    const flip = flipOn && isFlipped(stats, e.factor, e.w, e.rt);
+    const raw = statsRow(stats, e.factor, e.w, e.rt, compare.window);
+    if (raw) {
+      const r = applyFlip(raw, flip);
+      r.factor = e.factor;
+      r._key = cartKey(e);
+      r._label = labelFor(e.factor);
+      r._slice = sliceLabel(e);
+      r._color = PALETTE[i % PALETTE.length];
+      rows.push(r);
+    }
+    const data = await loadSeries(e.dataset, e.sort, e.rt, e.band, e.w);
+    const mask = windowMask(data.dates, compare.window);
+    const dates = data.dates.filter((_, j) => mask[j]);
+    const vals = cumulative(data.cols[e.factor] || [], mask, flip).filter((v) => v !== null);
+    // ❗Series from different datasets have different spans. Use the LONGEST axis and pad
+    // the short ones at the FRONT: aligning them at index 0 would silently slide the TRACE
+    // era back to 1973 and make two different histories look like one.
+    datasets.push({ _dates: dates, _vals: vals,
+                    label: `${labelFor(e.factor)} — ${sliceLabel(e)}` + (flip ? " (flipped)" : ""),
+                    borderColor: PALETTE[i % PALETTE.length],
+                    backgroundColor: PALETTE[i % PALETTE.length] });
+  }
+
+  const all = new Set();
+  datasets.forEach((d) => d._dates.forEach((x) => all.add(x)));
+  labels = [...all].sort();
+  const index = new Map(labels.map((d, i) => [d, i]));
+  datasets.forEach((d) => {
+    const arr = new Array(labels.length).fill(null);
+    d._dates.forEach((dt, j) => { arr[index.get(dt)] = d._vals[j]; });
+    d.data = arr;
+    d.spanGaps = false;
+    delete d._dates; delete d._vals;
+  });
+
+  cChart = drawChart($("c-chart"), cChart, labels, datasets);
+
+  renderTable(table, rows, {
+    sortBy: "sharpe", asc: false, showSlice: true,
+    onSort: () => {},
+  });
+
+  const spans = rows.map((r) => r.n).filter((n) => n);
+  if (spans.length > 1 && Math.max(...spans) !== Math.min(...spans)) {
+    $("c-hint").textContent =
+      `Series cover different periods (${Math.min(...spans)}–${Math.max(...spans)} months). `
+      + "Cumulative lines start where each series starts.";
+  } else {
+    $("c-hint").textContent = "";
+  }
+}
+
+function refreshCompareFactors() {
+  const ds = $("c-dataset").value, sort = $("c-sort").value, band = $("c-band").value;
+  const prod = META.products[`${ds}_${sort}`];
+  const fs = prod.factors.filter((f) => bandOf(f) === band)
+                         .sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+  fill($("c-factor"), fs.map((f) => [f, `${labelFor(f)}  (${f})`]), $("c-factor").value);
+}
+
+/* ------------------------------------------------------------------- boot */
+function segButtons(el, entries, current, onPick) {
+  el.innerHTML = "";
+  for (const [v, t] of entries) {
+    const b = document.createElement("button");
+    b.textContent = t;
+    b.setAttribute("aria-pressed", String(v === current));
+    b.onclick = () => {
+      [...el.children].forEach((c) => c.setAttribute("aria-pressed", "false"));
+      b.setAttribute("aria-pressed", "true");
+      onPick(v);
+    };
+    el.appendChild(b);
+  }
+}
+
+function productEntries() {
+  return Object.keys(META.datasets).map((k) => [k, META.datasets[k].label]);
+}
+
+function syncProductControls(prefix) {
+  const ds = $(`${prefix}-dataset`).value, sort = $(`${prefix}-sort`).value;
+  const prod = META.products[`${ds}_${sort}`];
+  fill($(`${prefix}-rt`), prod.return_types.map((r) => [r, META.return_types[r]]),
+       $(`${prefix}-rt`).value);
+  fill($(`${prefix}-band`), prod.bands.map((b) => [b, META.bands[b]]), $(`${prefix}-band`).value);
+  fill($(`${prefix}-w`), prod.weightings.map((w) => [w, META.weightings[w]]),
+       $(`${prefix}-w`).value);
+}
+
+function renderAbout() {
+  const p = META.products;
+  const rows = Object.keys(p).map((k) => {
+    const x = p[k];
+    return `<tr><td>${META.datasets[x.dataset].label}</td>
+            <td class="muted">${META.sorts[x.sort]}</td>
+            <td class="num">${x.span[0]} to ${x.span[1]}</td>
+            <td class="num">${x.months}</td>
+            <td class="num">${x.n_series.toLocaleString()}</td>
+            <td class="num">${x.n_would_flip.toLocaleString()}</td></tr>`;
+  }).join("");
+
+  const bm = Object.entries(META.benchmarks.pairing)
+    .map(([rt, b]) => `<tr><td>${META.return_types[rt]} <span class="muted">(${rt})</span></td>
+                       <td><code>${b}</code></td></tr>`).join("");
+
+  $("about-body").innerHTML = `
+    <h2>What you are looking at</h2>
+    <p>Each series is one long&ndash;short bond factor: sort bonds on a characteristic, go long
+       the top group and short the bottom, rebalance monthly. Returns are monthly and in
+       decimal; the tables annualise them.</p>
+
+    <h2>The products</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Dataset</th><th>Sort</th><th>Span</th><th>Months</th>
+                 <th>Series</th><th>Would flip</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+
+    <h2>Sign convention &mdash; read this</h2>
+    <p>These factors are published <strong>unflipped</strong>. Older OSBAP files multiplied any
+       factor with a negative full-sample mean by &minus;1 and marked it with a star
+       (<code>b_amd*</code>). That rule reads the whole sample, so extending the data by one
+       month can flip a factor against last year's file &mdash; silently, with its legs
+       relabelled. We stopped doing it.</p>
+    <p><strong>Orient to positive mean</strong> applies the shipped flip set for display only.
+       It is the same mapping that travels in <code>flip_set.json</code> inside every download,
+       so the page and the archive agree. Flipping negates the return, so Sharpe, t-stat, alpha,
+       beta and information ratio negate with it; volatility does not. Maximum drawdown is
+       shown as &mdash; when flipped, because the drawdown of a negated path is a different
+       number, not a sign change.</p>
+
+    <h2>Alpha and beta</h2>
+    <p>Each return type is regressed on its <em>own</em> market benchmark &mdash; a
+       duration-adjusted factor is never regressed on an unadjusted market:</p>
+    <div class="scroll"><table><thead><tr><th>Return type</th><th>Benchmark</th></tr></thead>
+      <tbody>${bm}</tbody></table></div>
+    <p>Benchmarks come from the public pipeline's spliced factor matrix, which runs
+       1973-02 to 2025-11 continuously. Alpha and beta are shown as &mdash; below
+       ${META.benchmarks.min_months} overlapping months, which is why the 1-year window has no
+       alpha: twelve observations is not an estimate.</p>
+
+    <h2>Cumulative performance</h2>
+    <p>Charts show the cumulative <em>sum</em> of monthly returns, in percent. A long&ndash;short
+       factor is zero-cost, so compounding it is not meaningful.</p>
+
+    <h2>Gaps</h2>
+    <p>Factor returns are missing in eight known Lehman months (1975-08 to 1975-11 and
+       1984-12 to 1985-03). Illiquidity signals need TRACE transaction data and are empty
+       before 2002-08. For the long sample, 1985-06 is the sensible start: before then almost
+       every bond is investment grade.</p>
+
+    <h2>Getting the data</h2>
+    <p>Everything here is downloadable from
+       <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>. The time series
+       this page plots are byte-for-byte the CSV files in those archives.</p>`;
+}
+
+async function boot() {
+  try {
+    META = await (await fetch(`${DATA}/meta.json`)).json();
+  } catch (err) {
+    document.querySelector(".wrap").innerHTML =
+      `<h1>FactorViz</h1><p class="warn">Could not load <code>data/meta.json</code>.
+       This page must be served over http(s) with its <code>data/</code> directory beside it
+       &mdash; opening the file directly from disk will not work.<br><small>${err}</small></p>`;
+    return;
+  }
+
+  for (const p of ["e", "c"]) {
+    fill($(`${p}-dataset`), productEntries(), "extended");
+    fill($(`${p}-sort`), Object.entries(META.sorts), "single");
+    syncProductControls(p);
+  }
+  $("e-rt").value = "exc"; $("e-band").value = "all"; $("e-w").value = "vw";
+  $("c-rt").value = "exc"; $("c-band").value = "all"; $("c-w").value = "vw";
+
+  const winEntries = [["full", "Full sample"], ["10y", "10Y"], ["5y", "5Y"], ["1y", "1Y"]];
+  segButtons($("e-window"), winEntries, "full", (v) => { explore.window = v; renderExplore(); });
+  segButtons($("c-window"), winEntries, "full", (v) => { compare.window = v; renderCompare(); });
+
+  for (const id of ["e-dataset", "e-sort"]) {
+    $(id).onchange = () => { syncProductControls("e"); explore.picked.clear(); renderExplore(); };
+  }
+  for (const id of ["e-rt", "e-band", "e-w", "e-flip"]) {
+    $(id).onchange = () => { if (id === "e-band") explore.picked.clear(); renderExplore(); };
+  }
+  $("e-search").oninput = () => renderExplore();
+
+  for (const id of ["c-dataset", "c-sort"]) {
+    $(id).onchange = () => { syncProductControls("c"); refreshCompareFactors(); };
+  }
+  $("c-band").onchange = refreshCompareFactors;
+  $("c-flip").onchange = renderCompare;
+  $("c-add").onclick = () => {
+    const e = { dataset: $("c-dataset").value, sort: $("c-sort").value, rt: $("c-rt").value,
+                band: $("c-band").value, w: $("c-w").value, factor: $("c-factor").value };
+    if (compare.cart.some((x) => cartKey(x) === cartKey(e))) return;
+    if (compare.cart.length >= 10) { alert("Ten series at once is the limit."); return; }
+    compare.cart.push(e);
+    renderCompare();
+  };
+  $("c-clear").onclick = () => { compare.cart = []; renderCompare(); };
+
+  const tabs = { explore: "panel-explore", compare: "panel-compare", about: "panel-about" };
+  for (const [name, panel] of Object.entries(tabs)) {
+    $(`tab-${name}`).onclick = () => {
+      for (const [n, p] of Object.entries(tabs)) {
+        $(`tab-${n}`).setAttribute("aria-selected", String(n === name));
+        $(p).classList.toggle("hidden", n !== name);
+      }
+    };
+  }
+
+  $("foot-built").innerHTML =
+    `Built ${META.built_utc.replace("T", " ").replace("+00:00", " UTC")} &middot; `
+    + `factors published unflipped &middot; alpha vs the matched bond-market benchmark`;
+
+  refreshCompareFactors();
+  renderChips();
+  renderAbout();
+  await renderExplore();
+}
+
+/* ------------------------------------------------- embedding (WordPress) */
+// The page is embedded in an <iframe> on openbondassetpricing.com. Post our height up so
+// the parent can size the frame and the visitor gets ONE scrollbar, not two. Sent on every
+// render and on resize; the parent ignores it if it is not listening.
+function postHeight() {
+  const h = Math.ceil(document.documentElement.getBoundingClientRect().height);
+  if (window.parent !== window) {
+    window.parent.postMessage({ factorviz: "height", height: h }, "*");
+  }
+}
+new ResizeObserver(postHeight).observe(document.documentElement);
+window.addEventListener("load", postHeight);
+
+boot();
+</script>
+</body>
+</html>
