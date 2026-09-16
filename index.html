@@ -982,15 +982,30 @@ function renderAbout() {
        amount outstanding.</p>
     <h3>Within-firm sorts</h3>
     <p>Bonds are ranked only against other bonds of the <em>same issuer</em>, so firm-level
-       determinants &mdash; default risk, industry, capital structure, leverage &mdash; are
+       determinants &mdash; default risk, industry, leverage, capital structure &mdash; are
        differenced out, and what remains is the marginal price of the bond-level
-       characteristic. Issuers are identified by CRSP <code>permno</code>, and only firms with
-       at least two bonds outstanding in a month qualify. Each firm contributes a high-minus-low
-       difference, and firms are aggregated in proportion to the combined market value of the
-       bonds in both legs.</p>
-    <p>Comparing the two sorts on the same characteristic is the cleanest available test of
-       whether a bond factor is a bond effect or a firm effect. The
-       <strong>Compare</strong> tab does this in one click.</p>
+       characteristic. Issuers are identified by CRSP <code>permno</code>.</p>
+    <p>Each month, bonds are grouped by issuer and rating band. A group takes part only if it
+       holds at least two bonds with both a valid signal and a positive market value. Within
+       each group the procedure is as follows.</p>
+    <ul>
+      <li>Take the <em>distinct</em> values of the characteristic among that issuer's bonds. A
+          firm holding four bonds at spreads of 150, 180, 180 and 220 basis points contributes
+          three values rather than four, so a repeated value cannot drag the cutoffs toward
+          itself.</li>
+      <li>Compute the 33rd and 67th percentiles of those distinct values.</li>
+      <li>Bonds strictly above the upper cutoff form that firm's long leg, and bonds strictly
+          below the lower cutoff form its short leg. Bonds in the middle are held by neither.
+          At least two distinct values are needed for this to be possible at all.</li>
+      <li>If either leg comes out empty, the firm contributes nothing that month.</li>
+      <li>Each leg is value-weighted within the firm, and the firm's contribution to the
+          factor is the difference between its two legs.</li>
+    </ul>
+    <p>Firms are then combined at the market level in proportion to the market value of the
+       bonds in their two legs, so a large issuer with many bonds counts for more than a small
+       one, and bonds sitting in the middle tercile carry no weight anywhere. The whole
+       procedure is repeated separately for all bonds, for investment grade alone and for high
+       yield alone.</p>
 
     <h2>Return definitions</h2>
     <p>A corporate bond's total return contains compensation for interest-rate risk that has
@@ -998,6 +1013,53 @@ function renderAbout() {
        to remove it, and all four are provided so that a result can be checked against the
        choice rather than resting on it.</p>
     ${returns}
+
+    <h2>Measurement error, and the one business day signal gap</h2>
+    <p>This is the most important thing to know about how these factors are built.</p>
+    <p>A month-end TRACE price is not a quote, it is a volume-weighted average of actual
+       transactions, so it carries noise from bid&ndash;ask bounce, dealer inventory, informed
+       trading and staleness. If that same price is used both to compute a signal and as the
+       denominator of the following month's return, the same error enters both.</p>
+    <p>For every price-based signal, a higher price maps to a lower signal. So a bond whose
+       observed price is too high is sorted toward the short leg, and its measured return is
+       mechanically too low. A bond whose price is too low is sorted toward the long leg with
+       its return too high. The long leg ends up holding bonds with overstated returns and the
+       short leg bonds with understated ones, which widens the measured premium for no economic
+       reason.</p>
+    <p>A worked example makes the size of it clear. Take two bonds, both truly worth 100 with a
+       true return of zero, one observed half a percent high and the other half a percent
+       low.</p>
+    <div class="eq">Bond A   observed 100.50   sorted SHORT   measured return 100/100.50 - 1 = -0.50%
+Bond B   observed  99.50   sorted LONG    measured return 100/ 99.50 - 1 = +0.50%
+
+measured long-short   +1.00% per month
+true long-short        0.00%</div>
+    <p>Noise alone does not do this. Sorting on a noisy signal while measuring returns
+       correctly simply pulls the estimated premium toward zero. The bias needs the same price
+       error to both misrank the bond and contaminate its return, and that is what sharing a
+       price achieves. This is correlated errors-in-variables, or CEIV, named by Duarte, Jones
+       and Wang (2024) and building on Blume and Stambaugh (1983) and Stambaugh (1988). It is
+       first order in the price noise, unlike the classic Blume and Stambaugh bias, which is
+       second order and negligible in a long&ndash;short factor.</p>
+    <p><strong>What we do about it.</strong> Every price-based signal in the TRACE era is
+       computed from a price observed at least one business day before the month-end price used
+       in the return denominator, capped at ten business days. The median gap in the data is
+       one business day. The two price errors are then from different dates and no longer share
+       a disturbance, so the mechanical correlation is removed. Pre-2002 Lehman and ICE data
+       are indicative bid-side quotes rather than transactions and need no such adjustment.</p>
+    <p>A second and related problem is that a month-end transaction price records a trade that
+       already happened rather than an offer anyone can hit, so a backtest priced at the signal
+       date measures a return no investor could have captured. The paper calls the combination
+       latent implementation bias and measures it by computing returns from the beginning of
+       the following month instead. The factors published here use the gapped signal with
+       month-end returns.</p>
+    <div class="cite">Dickerson, A., Robotti, C. and Rossetti, G. (2025). The Corporate Bond
+      Factor Replication Crisis, Section 3, Measurement error and latent implementation
+      bias.<br>
+      Duarte, J., Jones, C.S. and Wang, J.L. (2024). Very noisy option prices and inference
+      regarding the volatility risk premium. Journal of Finance 79, 3581-3621.<br>
+      Blume, M.E. and Stambaugh, R.F. (1983). Biases in computed returns, an application to the
+      size effect. Journal of Financial Economics 12, 387-404.</div>
 
     <h2>Risk adjustment</h2>
     <p>Alpha and beta are estimated from a time-series regression of the factor on a bond
@@ -1063,9 +1125,6 @@ function renderAbout() {
       <li>For long-sample work, 1985-06 is a sensible start. Before the mid-1980s the
           high-yield market is small, and a non-investment-grade long&ndash;short leg rests on
           roughly one hundred bonds.</li>
-      <li>TRACE-era characteristics built from transaction prices apply a one-business-day gap
-          between the signal and the start of the return window, which removes the
-          microstructure noise that would otherwise inflate estimated premia.</li>
     </ul>
 
     <h2>Download the data</h2>
