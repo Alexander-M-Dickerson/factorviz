@@ -24,13 +24,15 @@ page plots is exactly what you can download from the site.
 
 ## Reading the numbers
 
-Factors are published **unflipped**: a factor's sign is whatever the raw sort gives, and
-there are no starred column names. The page's "orient to positive mean" toggle applies the
-shipped flip set for display only. Older OSBAP files applied that flip to the data, which
-made a factor's sign depend on where the sample ended.
+Factors are published **without sign correction**, so a factor's sign is whatever the raw
+sort gives and no column name carries a star. The page's "orient to positive mean" control
+applies the shipped correction for display only, and is on by default. Older OSBAP files
+applied it to the data, which made a factor's sign depend on where the sample ended.
 
-Alpha and beta use one benchmark per return type -- a duration-adjusted factor is never
-regressed on an unadjusted market -- and are blank below 24 overlapping months.
+Alpha is the intercept of the one-factor bond CAPM of Dickerson, Mueller and Robotti (2023),
+with one benchmark per return type -- a duration-adjusted factor is never regressed on an
+unadjusted market -- and is blank below 24 overlapping months. Every t-statistic uses
+Newey-West standard errors with lags = floor(T^0.25).
 
 Charts show the cumulative **sum** of monthly returns: a long-short factor is zero-cost, so
 compounding it is not meaningful.

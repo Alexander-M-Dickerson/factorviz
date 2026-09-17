@@ -112,6 +112,13 @@
   td.num { font-variant-numeric: tabular-nums; }
   .slice-sub { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 400;
                letter-spacing: .01em; margin-top: 1px; }
+  tr.grouphead td {
+    text-align: left; background: var(--panel); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft);
+    padding: 7px 12px;
+  }
+  tr.grouphead:hover { background: var(--panel); }
+  p.method { margin: -2px 0 12px; font-size: 12.5px; color: var(--ink-soft); max-width: 92ch; }
   th {
     font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft);
     font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0;
@@ -172,7 +179,7 @@
 <header>
   <h1>Exploring the corporate bond factor zoo</h1>
   <p class="sub">
-    Long&ndash;short corporate bond factor returns from
+    108 Long&ndash;short corporate bond factors from
     <a href="https://openbondassetpricing.com">Open Source Bond Asset Pricing</a>. Compare
     single sorts against within-firm sorts, four return definitions, three rating universes
     and two weighting schemes &mdash; across three datasets reaching back to 1973.
@@ -188,9 +195,9 @@
 <!-- ===================== EXPLORE ===================== -->
 <section id="panel-explore">
   <div class="warn">
-    Fix one dataset, sort, return type, universe and weighting, then rank every factor
-    inside it. Sort by any column to ask which characteristics earned a premium there, which
-    ones survive risk adjustment, and which are only volatile. Tick up to ten to chart them.
+    Pick a dataset, a sort, a return definition, a universe and a weighting. The table
+    below ranks every factor in that slice, grouped by cluster, and any column heading
+    re-ranks it. Tick up to ten factors to chart them.
   </div>
 
   <div class="controls">
@@ -202,7 +209,8 @@
     <div class="field"><label>Window</label><div class="seg" id="e-window"></div></div>
     <div class="field"><label for="e-search">Find a factor</label>
       <input type="search" id="e-search" placeholder="name or mnemonic"></div>
-    <label class="check"><input type="checkbox" id="e-flip"> Orient to positive mean</label>
+    <label class="check"><input type="checkbox" id="e-flip" checked> Orient to positive mean</label>
+    <label class="check"><input type="checkbox" id="e-group" checked> Group by cluster</label>
   </div>
 
   <div class="card">
@@ -213,6 +221,13 @@
 
   <div class="card">
     <h2>All factors <span class="note" id="e-table-note"></span></h2>
+    <p class="method">
+      Alpha is the intercept from the one-factor bond CAPM (CAPMB) of
+      <a href="https://www.sciencedirect.com/science/article/pii/S0304405X23001393">Dickerson,
+      Mueller and Robotti (2023)</a>, the factor regressed on the market benchmark matched to
+      its return definition. Both t-statistics use Newey-West standard errors with lags
+      = floor(T<sup>0.25</sup>), where T is the number of months in the series.
+    </p>
     <div class="scroll"><table id="e-table"></table></div>
   </div>
 </section>
@@ -248,7 +263,7 @@
 
   <div class="controls" style="padding-top:10px;padding-bottom:10px">
     <div class="field"><label>Window</label><div class="seg" id="c-window"></div></div>
-    <label class="check"><input type="checkbox" id="c-flip"> Orient to positive mean</label>
+    <label class="check"><input type="checkbox" id="c-flip" checked> Orient to positive mean</label>
     <label class="check"><input type="checkbox" id="c-align"> Aligned sample</label>
     <span class="muted" id="c-hint" style="font-size:13px"></span>
   </div>
@@ -274,8 +289,9 @@
 <footer>
   <p id="foot-built"></p>
   <p>
-    Dickerson, A., Robotti, C., &amp; Rossetti, G. (2025).
-    <em>The Corporate Bond Factor Replication Crisis.</em> Working Paper.
+    <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A.,
+    Robotti, C. and Rossetti, G. (2025). <em>The Corporate Bond Factor Replication
+    Crisis.</em></a> Working Paper.
     &nbsp;&middot;&nbsp;
     <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>
   </p>
@@ -321,6 +337,27 @@ function bandOf(factor) {
 function labelFor(factor) {
   const sig = META.signals[baseName(factor)];
   return sig ? sig.name : factor;
+}
+
+function groupOf(factor) {
+  // The cluster a factor belongs to -- meta.json -> signals[*].group, the same nine clusters
+  // the data dictionary uses. Unknown signals fall into a trailing bucket rather than
+  // vanishing, because a row that is silently not rendered is the worse failure.
+  const sig = META.signals[baseName(factor)];
+  return sig && sig.group ? sig.group : "?";
+}
+
+function groupTitle(g) {
+  // ❗`g.label` reads "Cluster I: ...". Public text here uses commas and dashes, never
+  // colons, so the title is composed from the key and the short name instead.
+  return `Cluster ${g.key} — ${g.short}`;
+}
+
+function groupsInUse(rows) {
+  const seen = new Set(rows.map((r) => r._group));
+  const out = META.groups.filter((g) => seen.has(g.key));
+  if (seen.has("?")) out.push({ key: "?", short: "Other", label: "Other" });
+  return out;
 }
 
 function fmt(v, dp = 2) {
@@ -425,56 +462,131 @@ function cumulative(values, mask, flip) {
 /* ------------------------------------------------- statistics, in the browser
 
    ❗These must reproduce tools/make_factorviz.py exactly. Two implementations of the same
-   statistic is precisely the drift this project gates elsewhere, so `check_logic.mjs`
-   recomputes every series over the full window and compares against stats.json. If a formula
-   here changes and the Python does not, that check fails.
+   statistic is precisely the drift this project gates elsewhere, so
+   `tests/check_page_stats.mjs` recomputes every series over the full window and compares
+   against stats.json, field by field. If a formula here changes and the Python does not,
+   that check fails.
 
    Only used when the window is not one of the four precomputed ones, which today means the
    aligned sample. Everything else reads stats.json.                                        */
 
-function computeStats(y, x, mask) {
-  const n = y.length;
-  let cnt = 0, sum = 0;
-  for (let i = 0; i < n; i++) if (mask[i] && Number.isFinite(y[i])) { cnt++; sum += y[i]; }
-  if (!cnt) return null;
-  const mean = sum / cnt;
-  let ss = 0;
-  for (let i = 0; i < n; i++) if (mask[i] && Number.isFinite(y[i])) ss += (y[i] - mean) ** 2;
-  const sd = cnt > 1 ? Math.sqrt(ss / (cnt - 1)) : NaN;
+function nwLags(T) {
+  // floor(T^0.25) -- the paper's one lag convention, and tools/make_factorviz.py `_nw_lags`.
+  return Math.floor(Math.pow(T, 0.25));
+}
 
-  // Max drawdown on the cumulative SUM, matching _describe in the Python.
+function nwT(ys, xs) {
+  // t-statistic of the intercept with Newey-West (Bartlett) standard errors, for a
+  // constant-only regression (xs null) or a regression on [1, xs].
+  //
+  // ❗`ys` and `xs` must already be COMPACTED to the observations that count. A missing
+  // month left in place would make the Bartlett products pair months that are not adjacent.
+  // ❗No small-sample correction, matching statsmodels' default for cov_type HAC, which is
+  // what the paper computes. Mirrors `_nw_t0` in tools/make_factorviz.py.
+  const T = ys.length;
+  if (T < (xs ? 3 : 2)) return null;
+  let Sx = 0, Sxx = 0, Sy = 0, Sxy = 0;
+  for (let i = 0; i < T; i++) {
+    Sy += ys[i];
+    if (xs) { Sx += xs[i]; Sxx += xs[i] * xs[i]; Sxy += xs[i] * ys[i]; }
+  }
+  let b0, b1 = 0, i00, i01 = 0, i11 = 0;
+  if (!xs) { i00 = 1 / T; b0 = Sy / T; }
+  else {
+    const det = T * Sxx - Sx * Sx;
+    if (det === 0) return null;
+    i00 = Sxx / det; i01 = -Sx / det; i11 = T / det;
+    b0 = i00 * Sy + i01 * Sxy;
+    b1 = i01 * Sy + i11 * Sxy;
+  }
+  const z0 = new Float64Array(T), z1 = xs ? new Float64Array(T) : null;
+  for (let i = 0; i < T; i++) {
+    const u = ys[i] - b0 - (xs ? b1 * xs[i] : 0);
+    z0[i] = u;
+    if (xs) z1[i] = xs[i] * u;
+  }
+  let S00 = 0, S01 = 0, S11 = 0;
+  for (let i = 0; i < T; i++) {
+    S00 += z0[i] * z0[i];
+    if (xs) { S01 += z0[i] * z1[i]; S11 += z1[i] * z1[i]; }
+  }
+  const L = nwLags(T);
+  for (let l = 1; l <= L; l++) {
+    const w = 1 - l / (L + 1);
+    let a00 = 0, a01 = 0, a10 = 0, a11 = 0;
+    for (let i = l; i < T; i++) {
+      a00 += z0[i] * z0[i - l];
+      if (xs) { a01 += z0[i] * z1[i - l]; a10 += z1[i] * z0[i - l]; a11 += z1[i] * z1[i - l]; }
+    }
+    S00 += 2 * w * a00;
+    if (xs) { S01 += w * (a01 + a10); S11 += 2 * w * a11; }
+  }
+  const v00 = xs
+    ? (i00 * S00 + i01 * S01) * i00 + (i00 * S01 + i01 * S11) * i01
+    : i00 * S00 * i00;
+  if (!(v00 > 0) || !Number.isFinite(v00)) return null;
+  return b0 / Math.sqrt(v00);
+}
+
+function drawdown(values, mask, sign) {
+  // Max drawdown on the cumulative SUM, with the running peak starting at ZERO, the level
+  // the path starts from. Matches `_drawdown` in tools/make_factorviz.py.
   let acc = 0, peak = 0, dd = 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < values.length; i++) {
     if (!mask[i]) continue;
-    if (Number.isFinite(y[i])) acc += y[i];
+    if (Number.isFinite(values[i])) acc += sign * values[i];
     if (acc > peak) peak = acc;
     if (acc - peak < dd) dd = acc - peak;
   }
+  return dd;
+}
 
-  // OLS on the matched benchmark, same masked-sum algebra as _ols_many.
-  let m = 0, Sx = 0, Sy = 0, Sxx = 0, Sxy = 0, Syy = 0;
+function computeStats(y, x, mask) {
+  const n = y.length;
+  const ys = [], yb = [], xb = [];
   for (let i = 0; i < n; i++) {
-    if (!mask[i] || !Number.isFinite(y[i]) || !x || !Number.isFinite(x[i])) continue;
-    m++; Sx += x[i]; Sy += y[i]; Sxx += x[i] * x[i]; Sxy += x[i] * y[i]; Syy += y[i] * y[i];
+    if (!mask[i] || !Number.isFinite(y[i])) continue;
+    ys.push(y[i]);
+    if (x && Number.isFinite(x[i])) { yb.push(y[i]); xb.push(x[i]); }
   }
-  let alpha = null, beta = null, ir = null;
-  const den = m * Sxx - Sx * Sx;
-  if (m >= (META.benchmarks.min_months || 24) && den !== 0) {
-    beta = (m * Sxy - Sx * Sy) / den;
-    alpha = (Sy - beta * Sx) / m;
-    const sse = Syy - alpha * Sy - beta * Sxy;
-    const rsd = m > 2 ? Math.sqrt(Math.max(sse, 0) / (m - 2)) : NaN;
-    ir = rsd > 0 ? (alpha / rsd) * Math.sqrt(12) : null;
-    alpha = alpha * 12 * 100;
+  const cnt = ys.length;
+  if (!cnt) return null;
+  let sum = 0;
+  for (let i = 0; i < cnt; i++) sum += ys[i];
+  const mean = sum / cnt;
+  let ss = 0;
+  for (let i = 0; i < cnt; i++) ss += (ys[i] - mean) ** 2;
+  const sd = cnt > 1 ? Math.sqrt(ss / (cnt - 1)) : NaN;
+
+  // OLS on the matched benchmark, same algebra as _ols_many, then its Newey-West t.
+  const m = yb.length;
+  let alpha = null, beta = null, ir = null, alphaT = null;
+  if (m >= (META.benchmarks.min_months || 24)) {
+    let Sx = 0, Sy = 0, Sxx = 0, Sxy = 0, Syy = 0;
+    for (let i = 0; i < m; i++) {
+      Sx += xb[i]; Sy += yb[i]; Sxx += xb[i] * xb[i];
+      Sxy += xb[i] * yb[i]; Syy += yb[i] * yb[i];
+    }
+    const den = m * Sxx - Sx * Sx;
+    if (den !== 0) {
+      beta = (m * Sxy - Sx * Sy) / den;
+      alpha = (Sy - beta * Sx) / m;
+      const sse = Syy - alpha * Sy - beta * Sxy;
+      const rsd = m > 2 ? Math.sqrt(Math.max(sse, 0) / (m - 2)) : NaN;
+      ir = rsd > 0 ? (alpha / rsd) * Math.sqrt(12) : null;
+      alphaT = nwT(yb, xb);
+      alpha = alpha * 12 * 100;
+    }
   }
   return {
     n: cnt,
     mean_ann: mean * 12 * 100,
     vol_ann: sd * Math.sqrt(12) * 100,
     sharpe: sd > 0 ? (mean / sd) * Math.sqrt(12) : null,
-    tstat: sd > 0 ? mean / (sd / Math.sqrt(cnt)) : null,
-    maxdd: dd * 100,
-    alpha_ann: alpha, beta: beta, ir: ir, n_bm: m,
+    tstat: nwT(ys, null),
+    maxdd: drawdown(y, mask, 1) * 100,
+    maxdd_flip: drawdown(y, mask, -1) * 100,
+    alpha_ann: alpha, alpha_t: alphaT, beta: beta, ir: ir, n_bm: m,
   };
 }
 
@@ -494,43 +606,51 @@ function isFlipped(stats, factor, w, rt) {
 }
 
 function applyFlip(row, flip) {
-  // A flip negates the long-short return, so every statistic that is linear in the return
-  // negates with it. Volatility does not; Sharpe, t-stat, alpha and information ratio do.
-  // Beta negates too (the benchmark is unchanged). Max drawdown is NOT a sign flip of
-  // itself -- the drawdown of the negated path is a different number -- so it is dropped
-  // rather than reported wrongly.
+  // A sign correction negates the long-short return, so every statistic linear in the return
+  // negates with it -- mean, Sharpe, both t-statistics, alpha, beta and the information
+  // ratio. Volatility does not.
+  // ❗Max drawdown is NOT a sign flip of itself. The drawdown of the negated path is a
+  // different number, so the corrected one is MEASURED and carried as `maxdd_flip` rather
+  // than derived here.
   if (!flip) return row;
   const o = { ...row };
-  for (const k of ["mean_ann", "sharpe", "tstat", "alpha_ann", "beta", "ir"]) {
+  for (const k of ["mean_ann", "sharpe", "tstat", "alpha_ann", "alpha_t", "beta", "ir"]) {
     if (o[k] !== null && o[k] !== undefined) o[k] = -o[k];
   }
-  o.maxdd = null;
+  o.maxdd = (o.maxdd_flip === undefined) ? null : o.maxdd_flip;
   o._flipped = true;
   return o;
 }
 
 /* ------------------------------------------------------------- rendering */
+// ❗Each estimate is followed by its OWN t-statistic. Return, then t. Alpha, then t. A
+// t-statistic parked three columns away from the number it belongs to gets read against the
+// wrong one.
 const COLUMNS = [
   ["factor",    "Factor",        null],
   ["n",         "Months",        0],
   ["mean_ann",  "Return % p.a.", 2],
+  ["tstat",     "t-stat",        2],
   ["vol_ann",   "Vol % p.a.",    2],
   ["sharpe",    "Sharpe",        2],
-  ["tstat",     "t-stat",        2],
   ["alpha_ann", "Alpha % p.a.",  2],
+  ["alpha_t",   "t(alpha)",      2],
   ["beta",      "Beta",          2],
   ["ir",        "Info. ratio",   2],
   ["maxdd",     "Max DD %",      1],
 ];
 
+// The columns where a sign is information rather than an artefact of the definition.
+const SIGNED = new Set(["mean_ann", "tstat", "sharpe", "alpha_ann", "alpha_t", "beta", "ir"]);
+
 function renderTable(el, rows, opts) {
-  const { sortBy, asc, onSort, onPick, picked, showSlice } = opts;
+  const { sortBy, asc, onSort, onPick, picked, showSlice, grouped } = opts;
   // ❗No "Slice" column. It was the widest thing on the page and it repeated what the chips
   // above already say. The slice now sits as a muted second line under the factor name, so a
   // row is still identifiable without spending a column on it.
   const cols = COLUMNS;
 
-  const sorted = [...rows].sort((a, b) => {
+  const order = (a, b) => {
     const x = a[sortBy], y = b[sortBy];
     if (typeof x === "string" || typeof y === "string") {
       return (asc ? 1 : -1) * String(x).localeCompare(String(y));
@@ -538,30 +658,46 @@ function renderTable(el, rows, opts) {
     const nx = (x === null || x === undefined || Number.isNaN(x)) ? -Infinity : x;
     const ny = (y === null || y === undefined || Number.isNaN(y)) ? -Infinity : y;
     return asc ? nx - ny : ny - nx;
-  });
+  };
 
   const thead = cols.map(([k, t]) => {
     const cls = k === sortBy ? `sorted${asc ? " asc" : ""}` : "";
     return `<th data-k="${k}" class="${cls}">${t}</th>`;
   }).join("");
 
-  const body = sorted.map((r) => {
+  const rowHtml = (r) => {
     const tds = cols.map(([k, , dp]) => {
       if (k === "factor") {
         const tick = onPick
           ? `<input type="checkbox" data-f="${r._key}" ${picked && picked.has(r._key) ? "checked" : ""}> `
           : `<span class="swatch" style="background:${r._color}"></span>`;
-        const star = r._flipped ? ' <span class="muted" title="sign flipped for display">&minus;</span>' : "";
+        const star = r._flipped
+          ? ' <span class="muted" title="sign-corrected for display">&minus;</span>' : "";
         const sub = showSlice && r._slice
           ? `<span class="slice-sub">${r._slice}</span>` : "";
         return `<td>${tick}<strong>${r._label}</strong>${star}
                 <span class="muted">${r.factor}</span>${sub}</td>`;
       }
       const v = r[k];
-      return `<td class="num ${k === "factor" ? "" : signClass(k === "maxdd" ? null : v)}">${fmt(v, dp)}</td>`;
+      // ❗Colour only where the SIGN means something. A month count and a volatility are
+      // positive by construction, and painting them green reads as a verdict on a number
+      // that cannot be negative. Max drawdown is negative by construction, same argument.
+      return `<td class="num ${SIGNED.has(k) ? signClass(v) : ""}">${fmt(v, dp)}</td>`;
     }).join("");
     return `<tr>${tds}</tr>`;
-  }).join("");
+  };
+
+  // ❗Grouped, the column sort ranks WITHIN each cluster. Ranking across clusters and then
+  // cutting the list into cluster blocks would put the headings in a meaningless order and
+  // read as a broken sort.
+  const body = grouped
+    ? groupsInUse(rows).map((g) => {
+        const rs = rows.filter((r) => r._group === g.key).sort(order);
+        if (!rs.length) return "";
+        return `<tr class="grouphead"><td colspan="${cols.length}">${groupTitle(g)}`
+             + ` <span class="muted">${rs.length}</span></td></tr>` + rs.map(rowHtml).join("");
+      }).join("")
+    : [...rows].sort(order).map(rowHtml).join("");
 
   el.innerHTML = `<thead><tr>${thead}</tr></thead><tbody>${body}</tbody>`;
 
@@ -625,17 +761,19 @@ async function renderExplore() {
     r.factor = f;
     r._key = f;
     r._label = labelFor(f);
+    r._group = groupOf(f);
     if (q && !(`${f} ${r._label}`.toLowerCase().includes(q))) continue;
     rows.push(r);
   }
 
+  // ❗No column mnemonics on a public page. This line used to end "alpha vs mktb", which
+  // names an internal column and answers a question nobody outside the build repo asked.
   $("e-table-note").textContent =
-    `${rows.length} factors · ${prod.span[0]} to ${prod.span[1]} · `
-    + `alpha vs ${META.benchmarks.pairing[s.rt]}`;
+    `${rows.length} factors · ${prod.span[0]} to ${prod.span[1]}`;
 
   renderTable($("e-table"), rows, {
     sortBy: explore.sortBy, asc: explore.asc,
-    picked: explore.picked,
+    picked: explore.picked, grouped: $("e-group").checked,
     onSort: (k) => {
       if (explore.sortBy === k) explore.asc = !explore.asc;
       else { explore.sortBy = k; explore.asc = false; }
@@ -668,7 +806,7 @@ async function drawExploreChart(s, stats, flipOn) {
     const flip = flipOn && isFlipped(stats, f, s.w, s.rt);
     const full = cumulative(data.cols[f] || [], mask, flip);
     return {
-      label: labelFor(f) + (flip ? " (flipped)" : ""),
+      label: labelFor(f) + (flip ? " (sign-corrected)" : ""),
       data: full.filter((v) => v !== null),
       borderColor: PALETTE[i % PALETTE.length],
       backgroundColor: PALETTE[i % PALETTE.length],
@@ -836,7 +974,8 @@ async function renderCompare() {
     // the short ones at the FRONT: aligning them at index 0 would silently slide the TRACE
     // era back to 1973 and make two different histories look like one.
     datasets.push({ _dates: dates, _vals: vals,
-                    label: `${labelFor(e.factor)} — ${sliceLabel(e)}` + (flip ? " (flipped)" : ""),
+                    label: `${labelFor(e.factor)} — ${sliceLabel(e)}`
+                           + (flip ? " (sign-corrected)" : ""),
                     borderColor: PALETTE[i % PALETTE.length],
                     backgroundColor: PALETTE[i % PALETTE.length] });
   }
@@ -878,11 +1017,28 @@ async function renderCompare() {
 }
 
 function refreshCompareFactors() {
+  // ❗Grouped with <optgroup>, so the cluster a factor belongs to is visible while it is
+  // being chosen. A flat list of 108 names asks the reader to already know which is which.
   const ds = $("c-dataset").value, sort = $("c-sort").value, band = $("c-band").value;
   const prod = META.products[`${ds}_${sort}`];
-  const fs = prod.factors.filter((f) => bandOf(f) === band)
-                         .sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
-  fill($("c-factor"), fs.map((f) => [f, `${labelFor(f)}  (${f})`]), $("c-factor").value);
+  const sel = $("c-factor");
+  const keep = sel.value;
+  const fs = prod.factors.filter((f) => bandOf(f) === band);
+  sel.innerHTML = "";
+  let found = null;
+  for (const g of groupsInUse(fs.map((f) => ({ _group: groupOf(f) })))) {
+    const mine = fs.filter((f) => groupOf(f) === g.key)
+                   .sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+    if (!mine.length) continue;
+    const og = document.createElement("optgroup");
+    og.label = groupTitle(g);
+    for (const f of mine) {
+      og.appendChild(option(f, `${labelFor(f)}  (${f})`));
+      if (f === keep) found = f;
+    }
+    sel.appendChild(og);
+  }
+  if (found) sel.value = found;
 }
 
 /* ------------------------------------------------------------------- boot */
@@ -971,8 +1127,27 @@ function renderAbout() {
        portfolios. The factor return is the top portfolio minus the bottom, rebalanced monthly.
        Returns are monthly decimals, and the tables annualise them.</p>
     <p>The underlying bond panels are built by the
-       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">TRACE Data
-       Pipeline</a>, and the construction follows Dickerson, Robotti and Rossetti (2025).</p>
+       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">TRACE Data Pipeline</a>, and the construction follows
+       <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, Robotti and Rossetti (2025)</a>.</p>
+
+    <h2>Download the data</h2>
+    <p>Everything on this page is downloadable, and the archives carry a good deal more than
+       the page shows. The <strong>panel</strong> archive is the full long panel &mdash; the
+       long leg, the short leg and the long&ndash;short for every factor, equal-weighted and
+       value-weighted, all four return definitions and all three universes, with two-way
+       turnover and the number of bonds in each portfolio every month. The <strong>time
+       series</strong> archive is the same long&ndash;short returns pivoted wide, one CSV per
+       return definition, universe and weighting, which is what this page plots.</p>
+    ${dl}
+    <p>Every archive carries a <code>MANIFEST.json</code> listing each file with its SHA-256,
+       and a <code>flip_set.json</code> naming the factors a sign correction would turn over,
+       the same mapping the orientation control on this page uses. The four market benchmarks
+       behind the alphas are one small monthly file,
+       <a href="./data/benchmarks.csv">benchmarks.csv</a>, running from 1973. The pipeline
+       that builds the underlying bond panels is public at
+       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">github.com/Alexander-M-Dickerson/trace-data-pipeline</a>,
+       and more data is available at
+       <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>.</p>
 
     <h2>How the portfolios are formed</h2>
     <h3>Single sorts</h3>
@@ -981,31 +1156,19 @@ function renderAbout() {
        computed both equal-weighted and value-weighted, where value weights are price times
        amount outstanding.</p>
     <h3>Within-firm sorts</h3>
-    <p>Bonds are ranked only against other bonds of the <em>same issuer</em>, so firm-level
-       determinants &mdash; default risk, industry, leverage, capital structure &mdash; are
-       differenced out, and what remains is the marginal price of the bond-level
-       characteristic. Issuers are identified by CRSP <code>permno</code>.</p>
-    <p>Each month, bonds are grouped by issuer and rating band. A group takes part only if it
-       holds at least two bonds with both a valid signal and a positive market value. Within
-       each group the procedure is as follows.</p>
-    <ul>
-      <li>Take the <em>distinct</em> values of the characteristic among that issuer's bonds. A
-          firm holding four bonds at spreads of 150, 180, 180 and 220 basis points contributes
-          three values rather than four, so a repeated value cannot drag the cutoffs toward
-          itself.</li>
-      <li>Compute the 33rd and 67th percentiles of those distinct values.</li>
-      <li>Bonds strictly above the upper cutoff form that firm's long leg, and bonds strictly
-          below the lower cutoff form its short leg. Bonds in the middle are held by neither.
-          At least two distinct values are needed for this to be possible at all.</li>
-      <li>If either leg comes out empty, the firm contributes nothing that month.</li>
-      <li>Each leg is value-weighted within the firm, and the firm's contribution to the
-          factor is the difference between its two legs.</li>
-    </ul>
-    <p>Firms are then combined at the market level in proportion to the market value of the
-       bonds in their two legs, so a large issuer with many bonds counts for more than a small
-       one, and bonds sitting in the middle tercile carry no weight anywhere. The whole
-       procedure is repeated separately for all bonds, for investment grade alone and for high
-       yield alone.</p>
+    <p>Bonds are ranked only against other bonds of the <em>same issuer</em>, identified by
+       CRSP <code>permno</code>, so firm-level determinants such as default risk, industry and
+       leverage are differenced out and what remains is the marginal price of the bond-level
+       characteristic.</p>
+    <p>A firm takes part in a month only if it holds at least two bonds with both a valid
+       signal and a positive market value. The cutoffs are the 33rd and 67th percentiles of
+       the <em>distinct</em> signal values in that firm and rating group, so a repeated value
+       cannot drag them. Bonds strictly above the upper cutoff form the firm's long leg and
+       bonds strictly below the lower one form its short leg, the middle is held by nobody,
+       and a firm with an empty leg contributes nothing that month. Each leg is value-weighted
+       inside the firm, and firms combine in proportion to the market value of the bonds in
+       their two legs. The whole procedure runs separately for all bonds, for investment grade
+       and for high yield.</p>
 
     <h2>Return definitions</h2>
     <p>A corporate bond's total return contains compensation for interest-rate risk that has
@@ -1015,85 +1178,59 @@ function renderAbout() {
     ${returns}
 
     <h2>Measurement error, and the one business day signal gap</h2>
-    <p>This is the most important thing to know about how these factors are built.</p>
-    <p>A month-end TRACE price is not a quote, it is a volume-weighted average of actual
-       transactions, so it carries noise from bid&ndash;ask bounce, dealer inventory, informed
-       trading and staleness. If that same price is used both to compute a signal and as the
-       denominator of the following month's return, the same error enters both.</p>
-    <p>For every price-based signal, a higher price maps to a lower signal. So a bond whose
-       observed price is too high is sorted toward the short leg, and its measured return is
-       mechanically too low. A bond whose price is too low is sorted toward the long leg with
-       its return too high. The long leg ends up holding bonds with overstated returns and the
-       short leg bonds with understated ones, which widens the measured premium for no economic
-       reason.</p>
-    <p>A worked example makes the size of it clear. Take two bonds, both truly worth 100 with a
-       true return of zero, one observed half a percent high and the other half a percent
-       low.</p>
-    <div class="eq">Bond A   observed 100.50   sorted SHORT   measured return 100/100.50 - 1 = -0.50%
-Bond B   observed  99.50   sorted LONG    measured return 100/ 99.50 - 1 = +0.50%
-
-measured long-short   +1.00% per month
-true long-short        0.00%</div>
-    <p>Noise alone does not do this. Sorting on a noisy signal while measuring returns
-       correctly simply pulls the estimated premium toward zero. The bias needs the same price
-       error to both misrank the bond and contaminate its return, and that is what sharing a
-       price achieves. This is correlated errors-in-variables, or CEIV, named by Duarte, Jones
-       and Wang (2024) and building on Blume and Stambaugh (1983) and Stambaugh (1988). It is
-       first order in the price noise, unlike the classic Blume and Stambaugh bias, which is
-       second order and negligible in a long&ndash;short factor.</p>
+    <p>A month-end TRACE price is a volume-weighted average of actual trades rather than a
+       quote, so it carries noise. If the same price sets a signal and the denominator of the
+       following month's return, the same error enters both. A bond priced too high sorts
+       toward the short leg and its measured return comes out too low, a bond priced too low
+       sorts toward the long leg with its return too high, and the measured premium widens for
+       no economic reason. Noise alone does not do this. The bias needs the same price error to
+       both misrank the bond and contaminate its return, and it is first order in that noise.</p>
     <p><strong>What we do about it.</strong> Every price-based signal in the TRACE era is
-       computed from a price observed at least one business day before the month-end price used
-       in the return denominator, capped at ten business days. The median gap in the data is
-       one business day. The two price errors are then from different dates and no longer share
-       a disturbance, so the mechanical correlation is removed. Pre-2002 Lehman and ICE data
-       are indicative bid-side quotes rather than transactions and need no such adjustment.</p>
-    <p>A second and related problem is that a month-end transaction price records a trade that
-       already happened rather than an offer anyone can hit, so a backtest priced at the signal
-       date measures a return no investor could have captured. The paper calls the combination
-       latent implementation bias and measures it by computing returns from the beginning of
-       the following month instead. The factors published here use the gapped signal with
-       month-end returns.</p>
-    <div class="cite">Dickerson, A., Robotti, C. and Rossetti, G. (2025). The Corporate Bond
-      Factor Replication Crisis, Section 3, Measurement error and latent implementation
-      bias.<br>
+       computed from a price observed at least one business day before the month-end price
+       used in the return denominator, capped at ten business days, with a median gap of one.
+       The two price errors then come from different dates and no longer share a disturbance.
+       Pre-2002 Lehman and ICE prices are indicative bid-side quotes and need no such
+       adjustment.</p>
+    <div class="cite"><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A., Robotti, C. and Rossetti, G.
+      (2025). The Corporate Bond Factor Replication Crisis</a>, Section 3.<br>
       Duarte, J., Jones, C.S. and Wang, J.L. (2024). Very noisy option prices and inference
       regarding the volatility risk premium. Journal of Finance 79, 3581-3621.<br>
       Blume, M.E. and Stambaugh, R.F. (1983). Biases in computed returns, an application to the
       size effect. Journal of Financial Economics 12, 387-404.</div>
 
     <h2>Risk adjustment</h2>
-    <p>Alpha and beta are estimated from a time-series regression of the factor on a bond
-       market benchmark, and <strong>each return definition is paired with its own
-       benchmark</strong>, so a duration-adjusted factor is never regressed on an
-       unadjusted market.</p>
+    <p>Alpha and beta come from a time-series regression of the factor on a bond market
+       benchmark, the one-factor bond CAPM (CAPMB) of
+       <a href="https://www.sciencedirect.com/science/article/pii/S0304405X23001393">Dickerson, Mueller and Robotti (2023)</a>. <strong>Each return
+       definition is paired with its own benchmark</strong>, so a duration-adjusted factor is
+       never regressed on an unadjusted market.</p>
     <div class="scroll"><table><thead><tr><th>Return definition</th>
       <th>Market benchmark</th></tr></thead><tbody>${bm}</tbody></table></div>
     <div class="eq">r_t = alpha + beta * MKT_t + e_t</div>
-    <p>Alpha is annualised and reported in percent. The information ratio is the annualised
-       ratio of alpha to residual volatility. Both are shown as &mdash; when fewer than
-       ${META.benchmarks.min_months} overlapping monthly observations are available, which is
-       why the one-year window reports no alpha, because twelve observations is not an
-       estimate.</p>
+    <p>Alpha is annualised and reported in percent, and the information ratio is the annualised
+       ratio of alpha to residual volatility. The t-statistics on both the average return and
+       alpha use Newey-West standard errors with lags = floor(T<sup>0.25</sup>), where T is the
+       number of months in the series. Alpha, its t-statistic and beta are shown as &mdash;
+       below ${META.benchmarks.min_months} overlapping monthly observations, which is why the
+       one-year window reports no alpha, because twelve observations is not an estimate.</p>
+    <p>The four benchmarks are downloadable as one monthly file,
+       <a href="./data/benchmarks.csv">benchmarks.csv</a>, running from 1973 to the end of the
+       sample.</p>
 
     <h2>Sign convention</h2>
-    <p>These factors are <strong>not sign-corrected to have a positive mean</strong>. A common
-       convention multiplies any factor whose average return is negative over the full sample
-       by minus one, so that every published factor appears to earn a positive premium.</p>
-    <p>Short-term reversal is the familiar example. Sorted on last month's return, the
-       high-minus-low portfolio earns a negative average, so the convention flips it and
-       publishes the low-minus-high portfolio instead, usually marked with a star.</p>
-    <p>The correction is computed from the average return over the whole sample, including
-       months later than the ones being reported, and the answer depends on where the sample
-       ends. One more month of data can reverse a factor's sign against last year's release
-       and swap which leg is called long, without anything in the file saying so.</p>
-    <p>We publish raw orientation, so the long leg is always the high-characteristic
-       portfolio. The <strong>orient to positive mean</strong> control applies the conventional
-       correction for display only, using the same mapping distributed with the downloadable
-       data, so the page and the download always agree. The correction negates the return, so
-       every statistic that is linear in the return negates with it, including the average
-       return, Sharpe ratio, t-statistic, alpha, beta and information ratio. Volatility is
-       unchanged. Maximum drawdown is left blank under a correction, because the drawdown of a
-       negated return path is a different quantity rather than a change of sign.</p>
+    <p>These factors are <strong>not sign-corrected</strong>. The long leg is always the
+       high-characteristic portfolio, so a factor whose average return is negative keeps it.
+       Short-term reversal is the familiar example.</p>
+    <p>The usual alternative multiplies any factor with a negative full-sample average by minus
+       one. That correction reads the whole sample, including months later than the ones being
+       reported, so one more month of data can reverse a factor against last year's release and
+       swap which leg is called long.</p>
+    <p><strong>Orient to positive mean</strong> applies that correction for display only, using
+       the same mapping distributed with the data, and it is on by default. It negates the
+       return, so the average return, Sharpe ratio, both t-statistics, alpha, beta and the
+       information ratio negate with it. Volatility does not, and maximum drawdown is measured
+       again on the corrected path rather than negated, because the drawdown of a negated path
+       is a different quantity.</p>
 
     <h2>Cumulative performance</h2>
     <p>Charts plot the cumulative <em>sum</em> of monthly returns, in percent, and maximum
@@ -1127,22 +1264,9 @@ true long-short        0.00%</div>
           roughly one hundred bonds.</li>
     </ul>
 
-    <h2>Download the data</h2>
-    <p>Everything on this page is downloadable. The <strong>panel</strong> archive holds the
-       long parquet with every leg, weighting and return type. The <strong>time series</strong>
-       archive holds the same data pivoted wide, one CSV per return type, universe and
-       weighting, which is what this page plots.</p>
-    ${dl}
-    <p>Every archive carries a <code>MANIFEST.json</code> listing each file with its SHA-256,
-       and a <code>flip_set.json</code> that reproduces the older sign convention. The pipeline
-       that builds the underlying bond panels is public at
-       <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">github.com/Alexander-M-Dickerson/trace-data-pipeline</a>,
-       and more data is available at
-       <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>.</p>
-
     <h2>Citation</h2>
-    <p>Dickerson, A., Robotti, C. and Rossetti, G. (2025). <em>The Corporate Bond Factor
-       Replication Crisis.</em> Working Paper.</p>
+    <p><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A., Robotti, C. and Rossetti, G. (2025). <em>The
+       Corporate Bond Factor Replication Crisis.</em></a> Working Paper.</p>
   </div>`;
 }
 
@@ -1172,7 +1296,7 @@ async function boot() {
   for (const id of ["e-dataset", "e-sort"]) {
     $(id).onchange = () => { syncProductControls("e"); explore.picked.clear(); renderExplore(); };
   }
-  for (const id of ["e-rt", "e-band", "e-w", "e-flip"]) {
+  for (const id of ["e-rt", "e-band", "e-w", "e-flip", "e-group"]) {
     $(id).onchange = () => { if (id === "e-band") explore.picked.clear(); renderExplore(); };
   }
   $("e-search").oninput = () => renderExplore();
@@ -1212,7 +1336,10 @@ async function boot() {
 
   $("foot-built").innerHTML =
     `Built ${META.built_utc.replace("T", " ").replace("+00:00", " UTC")} &middot; `
-    + `factors published unflipped &middot; alpha vs the matched bond-market benchmark`;
+    + `factors published without sign-correction &middot; `
+    + `alpha from the one-factor bond CAPM, the factor regressed on the market benchmark `
+    + `matched to its return definition, excess or duration-adjusted &middot; `
+    + `t-statistics use Newey-West standard errors`;
 
   refreshCompareFactors();
   renderChips();
