@@ -67,7 +67,32 @@
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     padding: 14px 16px; margin-bottom: 18px;
   }
-  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field { display: flex; flex-direction: column; gap: 4px; position: relative; }
+  .check-wrap { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+  button.info {
+    width: 15px; height: 15px; padding: 0; margin-left: 5px; vertical-align: middle;
+    border: 1px solid var(--line); border-radius: 50%; background: var(--bg);
+    color: var(--ink-soft); cursor: pointer;
+    font: italic 600 10px/1 Georgia, "Times New Roman", serif;
+  }
+  button.info:hover, button.info[aria-expanded="true"] {
+    border-color: var(--accent); color: var(--accent);
+  }
+  .pop {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+    width: 370px; max-width: 80vw; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 12px 14px; font-size: 12.5px; line-height: 1.45;
+    color: var(--ink); text-align: left; text-transform: none; letter-spacing: normal;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+  }
+  .pop h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+            letter-spacing: .06em; color: var(--ink-soft); }
+  .pop p { margin: 0 0 8px; }
+  .pop p:last-child { margin-bottom: 0; }
+  .pop dl { margin: 0; }
+  .pop dt { font-weight: 600; margin-top: 9px; }
+  .pop dl > dt:first-child { margin-top: 0; }
+  .pop dd { margin: 2px 0 0; color: var(--ink-soft); }
   .field label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
   select, input[type=search] {
     font: inherit; font-size: 14px; padding: 6px 8px; background: var(--bg);
@@ -195,22 +220,39 @@
 <!-- ===================== EXPLORE ===================== -->
 <section id="panel-explore">
   <div class="warn">
-    Pick a dataset, a sort, a return definition, a universe and a weighting. The table
-    below ranks every factor in that slice, grouped by cluster, and any column heading
-    re-ranks it. Tick up to ten factors to chart them.
+    Pick a dataset, a sort, a return definition, a universe and a weighting.<br>
+    The table below ranks every factor in that slice selection, grouped by factor
+    cluster.<br>
+    Tick up to ten factors to chart them.
   </div>
 
   <div class="controls">
-    <div class="field"><label for="e-dataset">Dataset</label><select id="e-dataset"></select></div>
-    <div class="field"><label for="e-sort">Sort</label><select id="e-sort"></select></div>
-    <div class="field"><label for="e-rt">Return definition</label><select id="e-rt"></select></div>
-    <div class="field"><label for="e-band">Universe</label><select id="e-band"></select></div>
-    <div class="field"><label for="e-w">Weighting</label><select id="e-w"></select></div>
+    <div class="field"><label for="e-dataset">Dataset<button type="button" class="info"
+      data-help="dataset" aria-expanded="false" aria-label="About the datasets">i</button></label>
+      <select id="e-dataset"></select></div>
+    <div class="field"><label for="e-sort">Sort<button type="button" class="info"
+      data-help="sort" aria-expanded="false" aria-label="About the sorts">i</button></label>
+      <select id="e-sort"></select></div>
+    <div class="field"><label for="e-rt">Return definition<button type="button" class="info"
+      data-help="rt" aria-expanded="false" aria-label="About the return definitions">i</button></label>
+      <select id="e-rt"></select></div>
+    <div class="field"><label for="e-band">Universe<button type="button" class="info"
+      data-help="band" aria-expanded="false" aria-label="About the universes">i</button></label>
+      <select id="e-band"></select></div>
+    <div class="field"><label for="e-w">Weighting<button type="button" class="info"
+      data-help="w" aria-expanded="false" aria-label="About the weightings">i</button></label>
+      <select id="e-w"></select></div>
     <div class="field"><label>Window</label><div class="seg" id="e-window"></div></div>
     <div class="field"><label for="e-search">Find a factor</label>
       <input type="search" id="e-search" placeholder="name or mnemonic"></div>
-    <label class="check"><input type="checkbox" id="e-flip" checked> Orient to positive mean</label>
-    <label class="check"><input type="checkbox" id="e-group" checked> Group by cluster</label>
+    <span class="check-wrap">
+      <label class="check"><input type="checkbox" id="e-flip" checked> Orient to positive mean</label>
+      <button type="button" class="info" data-help="flip" aria-expanded="false"
+              aria-label="About orienting to a positive mean">i</button></span>
+    <span class="check-wrap">
+      <label class="check"><input type="checkbox" id="e-group" checked> Group by cluster</label>
+      <button type="button" class="info" data-help="group" aria-expanded="false"
+              aria-label="About grouping by cluster">i</button></span>
   </div>
 
   <div class="card">
@@ -241,11 +283,21 @@
   </div>
 
   <div class="controls">
-    <div class="field"><label for="c-dataset">Dataset</label><select id="c-dataset"></select></div>
-    <div class="field"><label for="c-sort">Sort</label><select id="c-sort"></select></div>
-    <div class="field"><label for="c-rt">Return definition</label><select id="c-rt"></select></div>
-    <div class="field"><label for="c-band">Universe</label><select id="c-band"></select></div>
-    <div class="field"><label for="c-w">Weighting</label><select id="c-w"></select></div>
+    <div class="field"><label for="c-dataset">Dataset<button type="button" class="info"
+      data-help="dataset" aria-expanded="false" aria-label="About the datasets">i</button></label>
+      <select id="c-dataset"></select></div>
+    <div class="field"><label for="c-sort">Sort<button type="button" class="info"
+      data-help="sort" aria-expanded="false" aria-label="About the sorts">i</button></label>
+      <select id="c-sort"></select></div>
+    <div class="field"><label for="c-rt">Return definition<button type="button" class="info"
+      data-help="rt" aria-expanded="false" aria-label="About the return definitions">i</button></label>
+      <select id="c-rt"></select></div>
+    <div class="field"><label for="c-band">Universe<button type="button" class="info"
+      data-help="band" aria-expanded="false" aria-label="About the universes">i</button></label>
+      <select id="c-band"></select></div>
+    <div class="field"><label for="c-w">Weighting<button type="button" class="info"
+      data-help="w" aria-expanded="false" aria-label="About the weightings">i</button></label>
+      <select id="c-w"></select></div>
     <div class="field"><label for="c-factor">Factor</label><select id="c-factor"></select></div>
     <button class="btn" id="c-add">Add series</button>
     <button class="btn ghost" id="c-clear">Clear all</button>
@@ -263,8 +315,14 @@
 
   <div class="controls" style="padding-top:10px;padding-bottom:10px">
     <div class="field"><label>Window</label><div class="seg" id="c-window"></div></div>
-    <label class="check"><input type="checkbox" id="c-flip" checked> Orient to positive mean</label>
-    <label class="check"><input type="checkbox" id="c-align"> Aligned sample</label>
+    <span class="check-wrap">
+      <label class="check"><input type="checkbox" id="c-flip" checked> Orient to positive mean</label>
+      <button type="button" class="info" data-help="flip" aria-expanded="false"
+              aria-label="About orienting to a positive mean">i</button></span>
+    <span class="check-wrap">
+      <label class="check"><input type="checkbox" id="c-align"> Aligned sample</label>
+      <button type="button" class="info" data-help="align" aria-expanded="false"
+              aria-label="About the aligned sample">i</button></span>
     <span class="muted" id="c-hint" style="font-size:13px"></span>
   </div>
 
@@ -290,7 +348,7 @@
   <p id="foot-built"></p>
   <p>
     <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A.,
-    Robotti, C. and Rossetti, G. (2025). <em>The Corporate Bond Factor Replication
+    Robotti, C. and Rossetti, G. (2026). <em>The Corporate Bond Factor Replication
     Crisis.</em></a> Working Paper.
     &nbsp;&middot;&nbsp;
     <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>
@@ -1041,6 +1099,79 @@ function refreshCompareFactors() {
   if (found) sel.value = found;
 }
 
+/* ------------------------------------------------- the info buttons
+
+   The text is DECLARED in spec/factorviz.json -> help and travels in meta.json. Each entry's
+   bold lead is composed from meta here rather than written there a second time, so a label
+   or a sample span cannot drift from the data it describes.                               */
+
+function helpLead(topic, key) {
+  if (topic === "dataset") {
+    const p = META.products[`${key}_single`];
+    const span = p ? ` <span class="muted">${p.span[0].slice(0, 7)} to `
+                   + `${p.span[1].slice(0, 7)}</span>` : "";
+    return META.datasets[key].label + span;
+  }
+  const maps = { sort: META.sorts, rt: META.return_types, band: META.bands,
+                 w: META.weightings };
+  const m = maps[topic];
+  return (m && m[key]) || key;
+}
+
+function helpHtml(topic) {
+  const h = META.help && META.help[topic];
+  if (!h) return "";
+  let body = `<h4>${h.title}</h4>`;
+  if (h.text) body += `<p>${h.text}</p>`;
+  if (h.items) {
+    body += "<dl>" + Object.keys(h.items).map((k) => {
+      // ❗An empty item falls back to the one-line definition the return type already
+      // carries. Writing those four lines here a second time is how they drift.
+      const d = META.return_type_detail && META.return_type_detail[k];
+      let txt = h.items[k] || (d && d.long) || "";
+      if (txt && !txt.endsWith(".")) txt += ".";
+      return `<dt>${helpLead(topic, k)}</dt><dd>${txt}</dd>`;
+    }).join("") + "</dl>";
+  }
+  if (h.note) body += `<p class="muted" style="margin-top:9px">${h.note}</p>`;
+  return body;
+}
+
+let openHelp = null;
+
+function closeHelp() {
+  if (!openHelp) return;
+  openHelp.el.remove();
+  openHelp.btn.setAttribute("aria-expanded", "false");
+  openHelp = null;
+}
+
+function toggleHelp(btn) {
+  const again = openHelp && openHelp.btn === btn;
+  closeHelp();
+  if (again) return;
+  const host = btn.closest(".field, .check-wrap");
+  if (!host) return;
+  const el = document.createElement("div");
+  el.className = "pop";
+  el.setAttribute("role", "note");
+  el.innerHTML = helpHtml(btn.dataset.help);
+  el.onclick = (ev) => ev.stopPropagation();
+  host.appendChild(el);
+  btn.setAttribute("aria-expanded", "true");
+  openHelp = { btn, el };
+}
+
+function mountHelp() {
+  document.querySelectorAll("button.info").forEach((b) => {
+    // ❗preventDefault, because five of these sit inside a <label>. Without it the click
+    // also activates the label and moves focus into the control behind the button.
+    b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); toggleHelp(b); };
+  });
+  document.addEventListener("click", closeHelp);
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeHelp(); });
+}
+
 /* ------------------------------------------------------------------- boot */
 function segButtons(el, entries, current, onPick) {
   el.innerHTML = "";
@@ -1126,11 +1257,11 @@ function renderAbout() {
     <p>Each series on this page is a long&ndash;short corporate bond portfolio. At each
        month-end, bonds are ranked on one characteristic &mdash; a credit spread, a measure of
        illiquidity, a past return, an estimated factor loading &mdash; and sorted into
-       portfolios. The factor return is the top portfolio minus the bottom, rebalanced monthly.
-       Returns are monthly decimals, and the tables annualise them.</p>
+       portfolios. The factor return is the top portfolio minus the bottom, rebalanced
+       monthly.</p>
     <p>The underlying bond panels are built by the
        <a href="https://github.com/Alexander-M-Dickerson/trace-data-pipeline">TRACE Data Pipeline</a>, and the construction follows
-       <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, Robotti and Rossetti (2025)</a>.</p>
+       <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, Robotti and Rossetti (2026)</a>.</p>
 
     <h2>Download the data</h2>
     <p>Everything on this page is downloadable, and the archives carry a good deal more than
@@ -1142,8 +1273,9 @@ function renderAbout() {
        return definition, universe and weighting, which is what this page plots.</p>
     ${dl}
     <p>Every archive carries a <code>MANIFEST.json</code> listing each file with its SHA-256,
-       and a <code>flip_set.json</code> naming the factors a sign correction would turn over,
-       the same mapping the orientation control on this page uses. The four market benchmarks
+       and a <code>flip_set.json</code> listing which factors have a negative average return
+       over the full sample. Those are exactly the factors the <strong>orient to positive
+       mean</strong> control multiplies by minus one. The four market benchmarks
        behind the alphas are one small monthly file,
        <a href="./data/benchmarks.csv">benchmarks.csv</a>, running from 1973. The pipeline
        that builds the underlying bond panels is public at
@@ -1152,6 +1284,10 @@ function renderAbout() {
        <a href="https://openbondassetpricing.com">openbondassetpricing.com</a>.</p>
 
     <h2>How the portfolios are formed</h2>
+    <p>The sorts are run with
+       <a href="https://pypi.org/project/pybondlab/">PyBondLab</a>, written by
+       <a href="https://giuliorossetti94.github.io/">Giulio Rossetti</a> and
+       <a href="https://www.alexdickerson.com/">Alex Dickerson</a>.</p>
     <h3>Single sorts</h3>
     <p>Bonds are ranked across the entire cross-section each month, into deciles over all
        bonds and quintiles within a rating band. The factor is the extreme-decile (or quintile) spread,
@@ -1162,21 +1298,22 @@ function renderAbout() {
        CRSP <code>permno</code>, so firm-level determinants such as default risk, industry and
        leverage are differenced out and what remains is the marginal price of the bond-level
        characteristic.</p>
-    <p>A firm takes part in a month only if it holds at least two bonds with both a valid
-       signal and a positive market value. The cutoffs are the 33rd and 67th percentiles of
-       the <em>distinct</em> signal values in that firm and rating group, so a repeated value
-       cannot drag them. Bonds strictly above the upper cutoff form the firm's long leg and
-       bonds strictly below the lower one form its short leg, the middle is held by nobody,
-       and a firm with an empty leg contributes nothing that month. Each leg is value-weighted
-       inside the firm, and firms combine in proportion to the market value of the bonds in
-       their two legs. The whole procedure runs separately for all bonds, for investment grade
-       and for high yield.</p>
+    <p>A firm is included in a given month t only if it holds at least two bonds with both
+       a valid signal and a positive market value. The cutoffs are the 33rd and 67th
+       percentiles of the <em>distinct</em> signal values in that firm and rating group. Bonds
+       strictly above the upper cutoff form the firm's long leg and bonds strictly below the
+       lower one form its short leg. Each leg is value-weighted inside the firm, and firms
+       combine in proportion to the market value of the bonds in their two legs. The procedure
+       runs separately for all bonds, for investment grade and for high yield.</p>
 
     <h2>Return definitions</h2>
-    <p>A corporate bond's total return contains compensation for interest-rate risk that has
-       nothing to do with credit. The four definitions below differ only in what is subtracted
-       to remove it, and all four are provided so that a result can be checked against the
-       choice rather than resting on it.</p>
+    <p>A corporate bond's total return contains compensation for interest-rate risk. The
+       four definitions below differ only in how the duration-hedged portfolio of Treasuries
+       is constructed, which is subtracted from the bond total return to isolate the credit
+       component.</p>
+    <p>Each definition is a separate build. The beta, momentum and reversal characteristics
+       are re-estimated against that definition's own benchmark, so a factor sorted on a beta
+       is not sorted on the same numbers across the four.</p>
     ${returns}
 
     <h2>Measurement error, and the one business day signal gap</h2>
@@ -1194,7 +1331,7 @@ function renderAbout() {
        Pre-2002 Lehman and ICE prices are indicative bid-side quotes and need no such
        adjustment.</p>
     <div class="cite"><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A., Robotti, C. and Rossetti, G.
-      (2025). The Corporate Bond Factor Replication Crisis</a>, Section 3.<br>
+      (2026). The Corporate Bond Factor Replication Crisis</a>, Section 3.<br>
       Duarte, J., Jones, C.S. and Wang, J.L. (2024). Very noisy option prices and inference
       regarding the volatility risk premium. Journal of Finance 79, 3581-3621.<br>
       Blume, M.E. and Stambaugh, R.F. (1983). Biases in computed returns, an application to the
@@ -1267,7 +1404,7 @@ function renderAbout() {
     </ul>
 
     <h2>Citation</h2>
-    <p><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A., Robotti, C. and Rossetti, G. (2025). <em>The
+    <p><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6088966">Dickerson, A., Robotti, C. and Rossetti, G. (2026). <em>The
        Corporate Bond Factor Replication Crisis.</em></a> Working Paper.</p>
   </div>`;
 }
@@ -1343,6 +1480,7 @@ async function boot() {
     + `matched to its return definition, excess or duration-adjusted &middot; `
     + `t-statistics use Newey-West standard errors`;
 
+  mountHelp();
   refreshCompareFactors();
   renderChips();
   renderAbout();

@@ -39,5 +39,5 @@ compounding it is not meaningful.
 
 ## Citation
 
-Dickerson, A., Robotti, C., & Rossetti, G. (2025). *The Corporate Bond Factor Replication
+Dickerson, A., Robotti, C., & Rossetti, G. (2026). *The Corporate Bond Factor Replication
 Crisis.* Working Paper.
