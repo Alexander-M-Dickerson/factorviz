@@ -203,7 +203,7 @@
   <div class="controls">
     <div class="field"><label for="e-dataset">Dataset</label><select id="e-dataset"></select></div>
     <div class="field"><label for="e-sort">Sort</label><select id="e-sort"></select></div>
-    <div class="field"><label for="e-rt">Return type</label><select id="e-rt"></select></div>
+    <div class="field"><label for="e-rt">Return definition</label><select id="e-rt"></select></div>
     <div class="field"><label for="e-band">Universe</label><select id="e-band"></select></div>
     <div class="field"><label for="e-w">Weighting</label><select id="e-w"></select></div>
     <div class="field"><label>Window</label><div class="seg" id="e-window"></div></div>
@@ -235,15 +235,15 @@
 <!-- ===================== COMPARE ===================== -->
 <section id="panel-compare" class="hidden">
   <div class="warn">
-    Build a list of series, each with its own dataset, sort, return type, universe and
-    weighting &mdash; then overlay them. This is how to ask whether a factor survives
+    Build a list of series, each with its own dataset, sort, return definition, universe
+    and weighting &mdash; then overlay them. This is how to ask whether a factor survives
     <em>within firm</em>, whether it is a duration story, or whether it existed before TRACE.
   </div>
 
   <div class="controls">
     <div class="field"><label for="c-dataset">Dataset</label><select id="c-dataset"></select></div>
     <div class="field"><label for="c-sort">Sort</label><select id="c-sort"></select></div>
-    <div class="field"><label for="c-rt">Return type</label><select id="c-rt"></select></div>
+    <div class="field"><label for="c-rt">Return definition</label><select id="c-rt"></select></div>
     <div class="field"><label for="c-band">Universe</label><select id="c-band"></select></div>
     <div class="field"><label for="c-w">Weighting</label><select id="c-w"></select></div>
     <div class="field"><label for="c-factor">Factor</label><select id="c-factor"></select></div>
@@ -254,7 +254,7 @@
   <div class="controls quick">
     <span class="quick-label">Add this factor across &rarr;</span>
     <button class="btn ghost sm" data-axis="sort">Both sorts</button>
-    <button class="btn ghost sm" data-axis="rt">All return types</button>
+    <button class="btn ghost sm" data-axis="rt">All return definitions</button>
     <button class="btn ghost sm" data-axis="dataset">All datasets</button>
     <button class="btn ghost sm" data-axis="band">All universes</button>
     <button class="btn ghost sm" data-axis="w">EW and VW</button>
@@ -1089,8 +1089,10 @@ function renderAbout() {
     const d = D[k];
     const eq = d.equation ? `<div class="eq">${d.equation}</div>` : "";
     const cite = d.cite_full ? `<div class="cite">${d.cite_full}</div>` : "";
+    // ❗Not "benchmark". On this tab that word already means the market a factor is
+    // regressed on. Here it is the series SUBTRACTED to build the return.
     const bm = d.benchmark
-      ? ` The benchmark column is <code>${d.benchmark}</code>.` : "";
+      ? ` In the data, the series subtracted is <code>${d.benchmark}</code>.` : "";
     return `<h3>${d.short}</h3>
             <p>${d.how}${bm}</p>${eq}${cite}`;
   }).join("");
